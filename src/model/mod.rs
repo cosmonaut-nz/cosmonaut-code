@@ -8,16 +8,16 @@
 //!         Have a timeout, or a means of knowing the status of the model.
 //!         Add files to skip.
 //!         Add folders to skip, based on
-//! 
+//!
 use crate::config::Config;
 use reqwest::Client;
-use serde_json::json;
 use serde_derive::Deserialize;
-use std::path::Path;
-use walkdir::WalkDir;
+use serde_json::json;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
+use std::path::Path;
+use walkdir::WalkDir;
 
 #[derive(Debug, Deserialize)]
 pub struct ModelResponse {
@@ -37,12 +37,12 @@ struct Message {
 const GENERAL_CODE_REVIEW_PROMPT: &str = "You are an expert code reviewer. \
                                    Don't explain what you are doing. \
                                    Just tell me any errors or improvements.";
-const SECURITY_CODE_REVIEW_PROMPT: &str = "You are an security expert who reviews code for security recommendations.";
+const SECURITY_CODE_REVIEW_PROMPT: &str =
+    "You are an security expert who reviews code for security recommendations.";
 // TODO: This needs to be better configured - TODO: pull all this into a configuration module
 const MODEL_API_URL: &str = "https://api.openai.com/v1/chat/completions";
 
 pub async fn run_code_review(config: Config) -> Result<(), Box<dyn std::error::Error>> {
-
     let system_message = match config.review_type.as_str() {
         // TODO: This stinks as a way of modifying the model input
         // TODO: add in additional needs from UI
@@ -62,13 +62,19 @@ pub async fn run_code_review(config: Config) -> Result<(), Box<dyn std::error::E
         let entry: walkdir::DirEntry = entry?;
         let path: &Path = entry.path();
         if path.is_file() {
-            process_file(&client, &MODEL_API_URL,
-                        &config.openai_api_key, 
-                        &config.openai_model, 
-                        path, &mut file, system_message).await?;
+            process_file(
+                &client,
+                &MODEL_API_URL,
+                &config.openai_api_key,
+                &config.openai_model,
+                path,
+                &mut file,
+                system_message,
+            )
+            .await?;
         } else {
             // TODO: add in skip files here
-            println!("Directory {}.",path.display());
+            println!("Directory {}.", path.display());
         }
     }
 
@@ -89,13 +95,16 @@ async fn process_file(
     // TODO: pull this into a formatter
     let prompt: String = format!("Review the following code:\n\n```\n{}\n```", code);
 
-    let response: ModelResponse = send_prompt(&client, &url, &model, &api_key, &prompt, system_message).await?;
-    
+    let response: ModelResponse =
+        send_prompt(&client, &url, &model, &api_key, &prompt, system_message).await?;
+
     // TODO: Need to have a proper formatter here so the reponses can be later post-processed
     //       Needs to be in structured text, such as a CSV format, so statistics can be gleaned
-    let response_text: String = format!("File: {}\nReview:\n{}\n\n", 
-                                        path.display(), 
-                                        response.choices[0].message.content);
+    let response_text: String = format!(
+        "File: {}\nReview:\n{}\n\n",
+        path.display(),
+        response.choices[0].message.content
+    );
 
     // TODO: resolve the means of communicating to user
     println!("{}", response_text);
@@ -145,7 +154,5 @@ async fn send_prompt(
                 return Err(format!("Network request failed: {}", e).into());
             }
         }
-
     }
 }
-

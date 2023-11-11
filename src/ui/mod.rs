@@ -1,10 +1,10 @@
-//! 
-//! 
 //!
-//! 
+//!
+//!
+//!
 //!
 // src/ui/mod.rs
-use eframe::{egui, Frame, NativeOptions, run_native, App};
+use eframe::{egui, run_native, App, Frame, NativeOptions};
 
 const APP_TITLE: &str = ">_ cosmonaut code reviewer";
 
@@ -17,7 +17,7 @@ struct MyAppUI {
 
 impl MyAppUI {
     pub fn new() -> Self {
-        Self { 
+        Self {
             repo_path: String::new(),
             analysis_type: 1, // Default to general code review
             analysis_result: String::new(),
@@ -49,7 +49,6 @@ impl MyAppUI {
         });
     }
 }
-
 
 // Orig
 // impl MyAppUI {
@@ -90,4 +89,3 @@ impl App for MyApp {
         });
     }
 }
-
