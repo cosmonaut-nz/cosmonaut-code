@@ -64,7 +64,7 @@ pub async fn run_code_review(config: Config) -> Result<(), Box<dyn std::error::E
         if path.is_file() {
             process_file(
                 &client,
-                &MODEL_API_URL,
+                MODEL_API_URL,
                 &config.openai_api_key,
                 &config.openai_model,
                 path,
@@ -96,7 +96,7 @@ async fn process_file(
     let prompt: String = format!("Review the following code:\n\n```\n{}\n```", code);
 
     let response: ModelResponse =
-        send_prompt(&client, &url, &model, &api_key, &prompt, system_message).await?;
+        send_prompt(client, url, model, api_key, &prompt, system_message).await?;
 
     // TODO: Need to have a proper formatter here so the reponses can be later post-processed
     //       Needs to be in structured text, such as a CSV format, so statistics can be gleaned
@@ -147,11 +147,11 @@ async fn send_prompt(
         }
         Err(e) => {
             if e.is_timeout() {
-                return Err("Network request timed out".into());
+                Err("Network request timed out".into())
             } else if e.is_status() {
-                return Err(format!("Server returned error: {}", e.status().unwrap()).into());
+                Err(format!("Server returned error: {}", e.status().unwrap()).into())
             } else {
-                return Err(format!("Network request failed: {}", e).into());
+                Err(format!("Network request failed: {}", e).into())
             }
         }
     }
