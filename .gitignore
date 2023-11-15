@@ -5,6 +5,8 @@
 # Generated files
 /Cargo.lock
 **/*.rs.bk
+/output/*.json
+/output/*.csv
 
 # IDEs and editors
 /.idea
@@ -12,11 +14,15 @@
 **/*.swo
 .vscode/
 *.sublime-workspace
+*.code-workspace
+scratchpad.txt
+**/*.old
 
 # Operating System
 .DS_Store
 Thumbs.db
 
-# Environment configuration
+# Environment configuration - SENSITIVE DATA!
 .env
+settings/development.*
 
