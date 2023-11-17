@@ -80,10 +80,12 @@ impl Default for RepositoryReview {
 ///
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct FileReview {
-    filename: String,                       // The name of the file
-    summary: String,                        // A summary of the findings of the review
-    file_rag_status: RAGStatus,             // In {Red, Amber, Green}
+    filename: String,           // The name of the file
+    summary: String,            // A summary of the findings of the review
+    file_rag_status: RAGStatus, // In {Red, Amber, Green}
+    #[serde(skip_serializing_if = "Option::is_none")]
     errors: Option<Vec<Error>>, // A list of errors found in the code giving the issue and potential resolution for each
+    #[serde(skip_serializing_if = "Option::is_none")]
     improvements: Option<Vec<Improvement>>, // A list of improvements, giving a suggestion and example for each
     security_issues: Vec<SecurityIssue>, // A list of security issues, giving the threat and mitigation for each
     statistics: String, // A list of statistics (e.g., lines of code, functions, methods, etc.)
@@ -147,6 +149,7 @@ mod tests {
                     "errors": [],
                     "improvements": [
                         {
+                            "code": "pub const API_TIMEOUT: Duration = Duration::from_secs(30);",
                             "suggestion": "Consider using a configuration file or environment variables for API_TIMEOUT to allow for flexibility without recompilation.",
                             "example": "Implement a function to load the timeout from an environment variable or a configuration file."
                         }
