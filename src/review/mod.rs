@@ -1,11 +1,16 @@
-//! Handles the file in a software repository. Iterates over the folder structure, ignoring files or folders that are not relevant. Passes each relevant (code) file for review.
-
+//! Handles the file in a software repository.
+//! Iterates over the folder structure, ignoring files or folders that are not relevant.
+//! Passes each relevant (code) file for review.
+use crate::chat_prompts::PromptData;
+use crate::data;
 use crate::data::{FileReview, RAGStatus, RepositoryReview};
-use crate::provider;
+use crate::provider::{self, ModelResponse};
 use crate::settings::Settings;
 use chrono::{DateTime, Local, Utc};
 use log::debug;
-use log::info;
+use log::{error, info};
+use regex::Regex;
+use serde::Deserialize;
 use std::error::Error;
 use std::fmt;
 use std::fs;
@@ -19,7 +24,9 @@ use walkdir::WalkDir;
 /// # Parameters
 ///
 /// * `settings` - A ['Settings'] that contains information for the LLM
-pub async fn assess_codebase(settings: Settings) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn assess_codebase(
+    settings: Settings,
+) -> Result<RepositoryReview, Box<dyn std::error::Error>> {
     // Used for the final report to write to disk
     let output_dir = PathBuf::from(&settings.report_output_path);
     let output_file_path =
@@ -29,7 +36,7 @@ pub async fn assess_codebase(settings: Settings) -> Result<(), Box<dyn std::erro
     let mut review = RepositoryReview::new();
     match extract_directory_name(&settings.repository_path) {
         Ok(dir_name) => review.set_repository_name(dir_name.to_string()),
-        Err(e) => eprintln!("Error extracting directory name: {}", e),
+        Err(e) => error!("Error extracting directory name: {}", e),
     }
     review.set_date(Utc::now());
     review.set_repository_purpose("purpose".to_string()); // TODO: Derive this from playing the README at the LLM
@@ -44,8 +51,8 @@ pub async fn assess_codebase(settings: Settings) -> Result<(), Box<dyn std::erro
         let path: &Path = entry.path();
         if path.is_file() {
             // TODO check extension to see if it is valid for review
-            let review_report = review_file(&settings, path).await?;
-            review.add_file_review(review_report);
+            let response = review_file(&settings, path).await?;
+            review.add_file_review(response);
         } else {
             // TODO: add in whitelisted directories, such as "src" only
             debug!("Directory {}.", path.display());
@@ -63,9 +70,30 @@ pub async fn assess_codebase(settings: Settings) -> Result<(), Box<dyn std::erro
         .write_all(review_json.as_bytes())
         .map_err(|e| format!("Error writing to output file: {}", e))?;
 
-    Ok(())
+    Ok(review)
 }
-
+//
+#[derive(Debug, Deserialize, Default, PartialEq)]
+pub enum ReviewType {
+    #[default]
+    General,
+    Security,
+}
+/// We offer two types of review:
+/// 1. A full general review of the code
+/// 2. A review focussed on security only
+impl ReviewType {
+    pub fn from_config(settings: &Settings) -> Self {
+        match settings.review_type {
+            1 => ReviewType::General,
+            2 => ReviewType::Security,
+            _ => {
+                info!("Using default: {:?}", ReviewType::default());
+                ReviewType::default()
+            }
+        }
+    }
+}
 /// Pulls the text from a ['File'] and sends it to the LLM for review
 ///
 /// This function takes two integer parameters and returns their sum.
@@ -81,14 +109,38 @@ async fn review_file(
     path: &Path,
 ) -> Result<FileReview, Box<dyn std::error::Error>> {
     info!("Handling output_file: {}", path.display());
+    // Set up the right provider
+    let provider = settings.get_active_provider().expect("Either a default or chosen provider should be configured in \'default.json\'. None was found. ");
+    // Determine the review type and generate the appropriate prompt
+    let review_type = ReviewType::from_config(settings);
+    let mut prompt_data = match review_type {
+        ReviewType::General => PromptData::get_code_review_prompt(provider),
+        ReviewType::Security => PromptData::get_security_review_prompt(provider),
+    };
 
     let code_from_file: String = fs::read_to_string(path)?;
     let review_request: String = format!("File name: {}\n{}\n", path.display(), code_from_file);
-    // Pass the file to be reviewed by the LLM service
-    let review_report: FileReview =
-        provider::review_file_via_llm(settings, &review_request).await?;
+    // Add the file as PromptData
+    prompt_data.add_user_message_prompt(review_request);
+    // debug!("Prompt data sent: {:?}", prompt_data);
 
-    Ok(review_report)
+    // Pass the file to be reviewed by the LLM service
+    let response: ModelResponse =
+        provider::review_code_file(settings, provider, prompt_data).await?;
+    let orig_response_json: String = response.choices[0].message.content.to_string();
+    // Strip any model markers from the reponse. LLM use markdown-style annotations for code, inc. "JSON"
+    match strip_artifacts_from(&orig_response_json) {
+        Ok(stripped_json) => {
+            #[cfg(debug_assertions)]
+            pretty_print_json_for_debug(&stripped_json);
+
+            match data::deserialize_file_review(&stripped_json) {
+                Ok(filereview_from_json) => Ok(filereview_from_json),
+                Err(e) => Err(format!("Failed to deserialize into FileReview: {}", e).into()),
+            }
+        }
+        Err(e) => Err(format!("Error stripping JSON markers: {}", e).into()),
+    }
 }
 
 /// Creates a timestamped file
@@ -116,7 +168,6 @@ fn create_timestamped_filename(
 pub struct PathError {
     message: String,
 }
-
 impl PathError {
     fn new(message: &str) -> PathError {
         PathError {
@@ -124,13 +175,11 @@ impl PathError {
         }
     }
 }
-
 impl fmt::Display for PathError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Path error: {}", self.message)
     }
 }
-
 impl Error for PathError {}
 
 fn extract_directory_name(path_str: &str) -> Result<&str, PathError> {
@@ -151,11 +200,91 @@ fn extract_directory_name(path_str: &str) -> Result<&str, PathError> {
         .and_then(|os_str| os_str.to_str())
         .ok_or_else(|| PathError::new("Invalid directory name"))
 }
+/// Removes any artefacts from an AI review
+///
+/// In some cases the AI agent add in markdown annotation for the content type,
+/// e.g., openai adds "\`\`\`json" at the beginning, and "\`\`\`" at the end of response to mark the type of content
+/// In others, spurious control characters are added that mangles the JSON for deserializing, e.g. characters in the range U+0000 to U+001F
+///
+/// TODO: May be the cause of specific issues and subsequent JSON serialization problems. Need to review and track, right now can't reproduce
+///
+/// # Parameters
+///
+/// * `json_str` - A str representation of the review_response
+///
+/// # Returns
+///
+/// * A String of the review_reponse with the markers removed
+///
+fn strip_artifacts_from(orig_json_str: &str) -> Result<String, &'static str> {
+    // First, clean any control characters found in the JSON
+    let re = Regex::new(r"[\x00-\x1F]").unwrap(); // Control characters regex
+    let sanitized_json_str = re.replace_all(orig_json_str, "");
+
+    // Next, find the first opening brace and the last closing brace
+    if let (Some(start), Some(end)) = (sanitized_json_str.find('{'), sanitized_json_str.rfind('}'))
+    {
+        if start < end {
+            // Extract the JSON substring and return it
+            Ok(sanitized_json_str[start..=end].to_string())
+        } else {
+            Err("Invalid JSON structure")
+        }
+    } else {
+        Err("No valid JSON found")
+    }
+}
+
+/// A utility to check the JSON sent back from the LLM
+#[cfg(debug_assertions)]
+fn pretty_print_json_for_debug(json_str: &str) {
+    match serde_json::from_str::<serde_json::Value>(json_str) {
+        Ok(json_value) => {
+            if let Ok(pretty_json) = serde_json::to_string_pretty(&json_value) {
+                debug!("{}", pretty_json);
+            } else {
+                debug!("Failed to pretty-print JSON. Likely mangled JSON.");
+            }
+        }
+        Err(e) => {
+            debug!("Cannot parse the JSON: {}", json_str);
+            debug!(
+                "Failed to parse JSON for debug pretty printing. Likely mangled JSON: {}",
+                e
+            );
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use chrono::TimeZone;
+
+    const JSON_OPENING: &str = "```json";
+    const JSON_CLOSE: &str = "```";
+    #[test]
+    fn test_strip_json_markers() {
+        let json_str_with_markers =
+            format!("{}\n{{\"key\": \"value\"}}\n{}", JSON_OPENING, JSON_CLOSE);
+        let result = strip_artifacts_from(&json_str_with_markers);
+        assert_eq!(result.unwrap(), "{\"key\": \"value\"}");
+    }
+
+    #[test]
+    fn test_no_markers() {
+        let json_str = "{\"key\": \"value\"}";
+        let result = strip_artifacts_from(json_str);
+        assert_eq!(result.unwrap(), json_str);
+    }
+
+    #[test]
+    fn test_invalid_json_markers() {
+        let json_str_with_extra_text = "xxx\n{\"key\": \"value\"}\nyyy";
+        let expected_json = "{\"key\": \"value\"}";
+        let result = strip_artifacts_from(json_str_with_extra_text);
+        assert_eq!(result.unwrap(), expected_json);
+    }
 
     #[test]
     fn test_create_timestamped_filename() {

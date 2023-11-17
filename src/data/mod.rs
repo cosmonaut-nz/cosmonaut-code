@@ -80,27 +80,30 @@ impl Default for RepositoryReview {
 ///
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct FileReview {
-    filename: String,                    // The name of the file
-    summary: String,                     // A summary of the findings of the review
-    file_rag_status: RAGStatus,          // In {Red, Amber, Green}
-    errors: Vec<Error>, // A list of errors found in the code giving the issue and potential resolution for each
-    improvements: Vec<Improvement>, // A list of improvements, giving a suggestion and example for each
+    filename: String,                       // The name of the file
+    summary: String,                        // A summary of the findings of the review
+    file_rag_status: RAGStatus,             // In {Red, Amber, Green}
+    errors: Option<Vec<Error>>, // A list of errors found in the code giving the issue and potential resolution for each
+    improvements: Option<Vec<Improvement>>, // A list of improvements, giving a suggestion and example for each
     security_issues: Vec<SecurityIssue>, // A list of security issues, giving the threat and mitigation for each
     statistics: String, // A list of statistics (e.g., lines of code, functions, methods, etc.)
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct Improvement {
+    code: String,
     suggestion: String,
     example: String,
 }
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct SecurityIssue {
+    code: String,
     threat: String,
     mitigation: String,
 }
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct Error {
+    code: String,
     issue: String,
     resolution: String,
 }
@@ -153,6 +156,7 @@ mod tests {
             }"#;
 
         let improvement = Improvement {
+            code: "pub const API_TIMEOUT: Duration = Duration::from_secs(30);".to_string(),
             suggestion: "Consider using a configuration file or environment variables for API_TIMEOUT to allow for flexibility without recompilation.".to_string(),
             example: "Implement a function to load the timeout from an environment variable or a configuration file.".to_string(),
         };
@@ -161,8 +165,8 @@ mod tests {
             filename: "/Users/avastmick/repos/cosmonaut-code/src/provider/static_config.rs".to_string(),
             summary:"The code defines a constant for a request timeout without any visible issues or security threats. However, the usage of 'pub const' could be improved for better code maintainability.".to_string(),
             file_rag_status: RAGStatus::Green,
-            errors: vec![],
-            improvements: vec![improvement],
+            errors: Some(vec![]),
+            improvements: Some(vec![improvement]),
             security_issues: vec![],
             statistics: "Lines of code: 6, Constants: 1, Imports: 1, Comments: 2".to_string(),
         };

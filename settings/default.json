@@ -1,11 +1,16 @@
 {
-    "provider": {
-        "name": "openai",
-        "service": "gpt-4",
-        "model": "gpt-4-1106-preview",
-        "api_url": "https://api.openai.com/v1/chat/completions",
-        "max_tokens": 4000
-    },
+    "providers": [
+        {
+            "name": "openai",
+            "service": "gpt-4",
+            "model": "gpt-4-1106-preview",
+            "api_url": "https://api.openai.com/v1/chat/completions",
+            "api_timeout": 60,
+            "max_tokens": 4000
+        }
+    ],
+    "chosen_provider": null, 
+    "default_provider": "openai",
     "output_type": "json",
     "review_type": 1
 }

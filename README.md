@@ -7,7 +7,7 @@
 
 to be honest, we built this tool because we needed it for the work we do. sure there are some great tools out there, but none of them quite hit the mark for our needs.
 
-it's in pure rust, including the ui. as you can tell we are not ui masters! :p
+it's in pure rust! :p (so far...)
 
 ### goals
 
@@ -42,7 +42,9 @@ see [contributing](CONTRIBUTING.md) for the rules, they are standard though.
 
 ## work status
 
-we do our best to release working code. status today is: *"it works, but it is not pretty or very user friendly."*
+we do our best to release working code.
+
+status today is: *"it works, but it is not pretty or very user friendly."*
 
 [X] load local repository
 
@@ -60,13 +62,12 @@ we do our best to release working code. status today is: *"it works, but it is n
 
 [ ] enable local llm review of code
 
-[X] output in json
+[ ] comparison of different llms revie output on same code (this could be very cool!)
 
-[ ] output in csv
+[X] output in json
 
 [ ] output in pdf
 
 [ ] run from pipeline (github actions, gitlab-ci)
 
-[ ] user interface
-
+[ ] user interface (maybe not in rust)

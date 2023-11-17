@@ -3,16 +3,17 @@
 //!
 //!
 //!
+mod chat_prompts;
 mod data;
 mod provider;
 mod review;
 mod settings;
-mod ui;
-use log::error;
+use log::{debug, error};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
+
     // Load settings
     let settings = match settings::Settings::new() {
         Ok(cfg) => cfg,
@@ -21,12 +22,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::process::exit(1); // Exit if settings cannot be loaded
         }
     };
+    debug!("Settings loaded: {:?}", settings);
 
-    // TODO: move the code into the UI handler
+    // TODO: Wire up CLI here.
+
+    // Call the assess_codebase, according to user configuration, either from commandline, or json settings files.
     review::assess_codebase(settings).await?;
-    // Run the UI
-    // TODO: eventually, this will be the root action for the application
-    ui::run();
 
     Ok(())
 }

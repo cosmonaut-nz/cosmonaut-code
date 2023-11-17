@@ -1,6 +1,6 @@
 //!
 //! Settings for setting up:
-//!     Service provider {OpenAI, Google, Other...}
+//!     Service providers {OpenAI, Google, Anthropic, Meta, Other...}
 //!     LLM API access
 //!     Repository directory/folder location
 //!
@@ -19,7 +19,9 @@ const APP_ENV_PREFIX: &str = "COSMOCODE";
 #[derive(Deserialize)]
 pub struct Settings {
     // General configuration fields
-    pub provider: Provider,
+    pub providers: Vec<Provider>,
+    pub chosen_provider: Option<String>,
+    pub default_provider: String,
     pub output_type: String,
     pub review_type: i32,
     pub repository_path: String,
@@ -35,6 +37,7 @@ pub struct Provider {
     pub service: String,
     pub model: String,
     pub api_url: String,
+    pub api_timeout: u64,
     pub max_tokens: i64,
 }
 #[derive(Deserialize)]
@@ -50,7 +53,9 @@ pub struct APIKey(String); // Sensitive data
 impl fmt::Debug for Settings {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Settings")
-            .field("provider", &self.provider)
+            .field("providers", &self.providers)
+            .field("chosen_provider", &self.chosen_provider)
+            .field("default_provider", &self.default_provider)
             .field("output_type", &self.output_type)
             .field("review_type", &self.review_type)
             .field("repository_path", &self.repository_path)
@@ -63,7 +68,9 @@ impl fmt::Debug for Settings {
 impl fmt::Display for Settings {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Settings")
-            .field("provider", &self.provider)
+            .field("providers", &self.providers)
+            .field("chosen_provider", &self.chosen_provider)
+            .field("default_provider", &self.default_provider)
             .field("output_type", &self.output_type)
             .field("review_type", &self.review_type)
             .field("repository_path", &self.repository_path)
@@ -78,12 +85,14 @@ impl fmt::Display for Settings {
 /// the behavior of the code review and analysis process.
 ///
 /// # Fields
-/// - `provider`: The organization providing the language model service (e.g., openai, etc.).
+/// - `providers`: The set of organizations providing the language model service (e.g., openai, google, anthropic, meta, etc.).
+/// - `default_provider`: Default is openai.
+/// - `chosen_provider`: The user selected provider from the configured list.
 /// - `sensitive settings`: Inc. API key for authentication, org_id and org_name.
-/// - `repository_path`: Path to the folder containing repository and code for analysis.
-/// - `report_output_path`: Path where analysis output report will be stored.
-/// - `output_type`: The format/type of the output (e.g., json, csv). Default is JSON.
-/// - `review_type`: Numeric code indicating the type of review (e.g., 1 for general, 2 for security).
+/// - `repository_path`: The user selected path to the folder containing repository and code for analysis.
+/// - `report_output_path`: The user selected path where analysis output report will be stored.
+/// - `output_type`: The user selected format/type of the output (e.g., json, pdf). Default is JSON.
+/// - `review_type`: The user selected numeric code indicating the type of review (e.g., 1 for general, 2 for security; default is 1).
 ///
 /// `review_type` and `output_type` have default values, but other fields must be explicitly set.
 impl Settings {
@@ -111,6 +120,18 @@ impl Settings {
         // Deserialize and return the configuration
         config.try_deserialize()
     }
+
+    /// Function gets either the chosen provider or default provider, or gives a ProviderError
+    pub fn get_active_provider(&self) -> Result<&Provider, ProviderError> {
+        let provider_name = self
+            .chosen_provider
+            .as_ref()
+            .unwrap_or(&self.default_provider);
+        self.providers
+            .iter()
+            .find(|p| p.name == *provider_name)
+            .ok_or_else(|| ProviderError::NotFound(provider_name.clone()))
+    }
 }
 /// Custom Debug implementation for Provider
 impl fmt::Debug for Provider {
@@ -120,6 +141,7 @@ impl fmt::Debug for Provider {
             .field("service", &self.service)
             .field("model", &self.model)
             .field("api_url", &self.api_url)
+            .field("api_timeout", &self.api_timeout)
             .field("max_tokens", &self.max_tokens)
             .finish()
     }
@@ -132,8 +154,21 @@ impl fmt::Display for Provider {
             .field("service", &self.service)
             .field("model", &self.model)
             .field("api_url", &self.api_url)
+            .field("api_timeout", &self.api_timeout)
             .field("max_tokens", &self.max_tokens)
             .finish()
+    }
+}
+#[derive(Debug)]
+pub enum ProviderError {
+    NotFound(String),
+}
+/// Custom error for misconfiguration of provider
+impl fmt::Display for ProviderError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ProviderError::NotFound(name) => write!(f, "Provider not found: {}", name),
+        }
     }
 }
 /// Custom Debug implementation for SensitiveSettings to prevent accidental printing of secret
@@ -149,7 +184,7 @@ impl fmt::Display for SensitiveSettings {
     }
 }
 /// Locking up the APIKey to prevent accidental display
-/// Note: `fn new(key: String) -> Self` is used by Settings::new, however the compiler moans
+/// Note: `fn new(key: String) -> Self` is used by Settings::new, however the compiler moans, so added dead_code allowance
 impl APIKey {
     #[allow(dead_code)]
     pub fn new(key: String) -> Self {
