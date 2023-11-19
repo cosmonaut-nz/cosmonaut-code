@@ -71,3 +71,27 @@ status today is: *"it works, but it is not pretty or very user friendly."*
 [ ] run from pipeline (github actions, gitlab-ci)
 
 [ ] user interface (maybe not in rust)
+
+## code structure
+
+The code is broken into modules to ensure a separation of concerns:
+
+- `provider` - managing the LLM providers and API calls to review code files
+- `review` - managing the review of the repository, including handling the filesystem and reading in of files
+- `settings` - a set of data structures that enable easy application configuration
+
+```plaintext
+src
+├── lib.rs
+├── main.rs
+├── provider
+│   ├── api.rs
+│   ├── mod.rs
+│   └── prompts.rs
+├── review
+│   ├── data.rs
+│   ├── mod.rs
+│   └── tools.rs
+└── settings
+    └── mod.rs
+```

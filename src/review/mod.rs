@@ -1,10 +1,11 @@
 //! Handles the file in a software repository.
 //! Iterates over the folder structure, ignoring files or folders that are not relevant.
 //! Passes each relevant (code) file for review.
-use crate::chat_prompts::PromptData;
-use crate::data;
-use crate::data::{FileReview, RAGStatus, RepositoryReview};
-use crate::provider::{self, ModelResponse};
+pub mod data;
+use crate::provider::api::ProviderCompletionResponse;
+use crate::provider::prompts::PromptData;
+use crate::provider::review_code_file;
+use crate::review::data::{FileReview, RAGStatus, RepositoryReview};
 use crate::settings::Settings;
 use chrono::{DateTime, Local, Utc};
 use log::debug;
@@ -46,17 +47,42 @@ pub async fn assess_codebase(
     review.set_code_types(Vec::new()); // TODO: Pull together a list from the files sent through for review, append then work out percentage
 
     // Walk the repository structure sending relevant files to the provider ai service to review
-    for entry in WalkDir::new(&settings.repository_path) {
-        let entry: walkdir::DirEntry = entry?;
-        let path: &Path = entry.path();
+    for entry in WalkDir::new(&settings.repository_path)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        let path = entry.path();
+
         if path.is_file() {
-            // TODO check extension to see if it is valid for review
-            let response = review_file(&settings, path).await?;
-            review.add_file_review(response);
+            // Check if the file extension is valid for review
+            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                if is_valid_extension(ext) {
+                    // Check if the file is empty
+                    if let Ok(metadata) = fs::metadata(path) {
+                        if metadata.len() > 0 {
+                            // File is not empty, proceed with review
+                            let response = review_file(&settings, path).await?;
+                            review.add_file_review(response);
+                        } else {
+                            // File is empty, skip
+                            debug!("Empty file skipped: {}", path.display());
+                        }
+                    }
+                } else {
+                    debug!("Invalid file extension, skipped: {}", path.display());
+                }
+            }
         } else {
             // TODO: add in whitelisted directories, such as "src" only
             debug!("Directory {}.", path.display());
         }
+    }
+
+    /// Checks whether a file is valid code or configuration to review
+    fn is_valid_extension(ext: &str) -> bool {
+        // TODO: Define valid extensions comprehensively
+        let valid_extensions = ["rs", "py", "js", "cs"]; // Example extensions
+        valid_extensions.contains(&ext)
     }
 
     // Serialize the review struct to JSON
@@ -110,7 +136,9 @@ async fn review_file(
 ) -> Result<FileReview, Box<dyn std::error::Error>> {
     info!("Handling output_file: {}", path.display());
     // Set up the right provider
-    let provider = settings.get_active_provider().expect("Either a default or chosen provider should be configured in \'default.json\'. None was found. ");
+    let provider = settings.get_active_provider()
+                                              .expect("Either a default or chosen provider should be configured in \'default.json\'. \
+                                              Either none was found, or the default provider did not match any name in the configured providers list.");
     // Determine the review type and generate the appropriate prompt
     let review_type = ReviewType::from_config(settings);
     let mut prompt_data = match review_type {
@@ -125,8 +153,8 @@ async fn review_file(
     // debug!("Prompt data sent: {:?}", prompt_data);
 
     // Pass the file to be reviewed by the LLM service
-    let response: ModelResponse =
-        provider::review_code_file(settings, provider, prompt_data).await?;
+    let response: ProviderCompletionResponse =
+        review_code_file(settings, provider, prompt_data).await?;
     let orig_response_json: String = response.choices[0].message.content.to_string();
     // Strip any model markers from the reponse. LLM use markdown-style annotations for code, inc. "JSON"
     match strip_artifacts_from(&orig_response_json) {
@@ -231,6 +259,10 @@ fn strip_artifacts_from(orig_json_str: &str) -> Result<String, &'static str> {
             Err("Invalid JSON structure")
         }
     } else {
+        debug!(
+            "Didn't find any valid JSON. What was found: {}",
+            orig_json_str
+        );
         Err("No valid JSON found")
     }
 }

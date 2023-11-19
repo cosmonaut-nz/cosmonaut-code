@@ -4,14 +4,14 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize, Default, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
 pub enum RAGStatus {
     #[default]
     Green,
     Amber,
     Red,
 }
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct RepositoryReview {
     repository_name: String,          // Derived from path
     date: DateTime<Utc>,              // Date of execution
@@ -22,6 +22,7 @@ pub struct RepositoryReview {
     code_types: Vec<CodeType>, // The languages (as a %) found in the repository (a la GitHub)
     filereviews: Vec<FileReview>, // Each of the code files
 }
+// TODO move over to impl_builder_methods!
 impl RepositoryReview {
     pub fn new() -> Self {
         RepositoryReview {
@@ -78,7 +79,7 @@ impl Default for RepositoryReview {
 /// - 'security_issues': a Vec of ['SecurityIssue']s, giving the threat and mitigation for each
 /// - 'statistics': a list of statistics (e.g., lines of code, functions, methods, etc.)
 ///
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct FileReview {
     filename: String,           // The name of the file
     summary: String,            // A summary of the findings of the review
@@ -91,30 +92,30 @@ pub struct FileReview {
     statistics: String, // A list of statistics (e.g., lines of code, functions, methods, etc.)
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct Improvement {
     code: String,
     suggestion: String,
     example: String,
 }
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct SecurityIssue {
     code: String,
     threat: String,
     mitigation: String,
 }
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct Error {
     code: String,
     issue: String,
     resolution: String,
 }
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct CodeType {
     language: String,
     percentage: i32,
 }
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct Contributor {
     name: String,
     last_contribution: DateTime<Utc>,
