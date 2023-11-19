@@ -3,12 +3,10 @@
 //!
 //!
 //!
-mod chat_prompts;
-mod data;
 mod provider;
 mod review;
 mod settings;
-use log::{debug, error};
+use log::{debug, error, info};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -28,6 +26,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Call the assess_codebase, according to user configuration, either from commandline, or json settings files.
     review::assess_codebase(settings).await?;
+
+    info!("Code review complete. See the output report for details.");
 
     Ok(())
 }

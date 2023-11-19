@@ -7,19 +7,21 @@
 //!
 use config::{Config, ConfigError, File};
 use log::warn;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::env;
 use std::fmt;
+use std::time::SystemTime;
 
 const SETTINGS_FILE_PATH: &str = "settings";
 const APP_ENV_PREFIX: &str = "COSMOCODE";
 
 /// struct to hold the configuration
 ///
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize, PartialEq)]
 pub struct Settings {
     // General configuration fields
-    pub providers: Vec<Provider>,
+    pub providers: Vec<ProviderSettings>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub chosen_provider: Option<String>,
     pub default_provider: String,
     pub output_type: String,
@@ -31,8 +33,8 @@ pub struct Settings {
     pub sensitive: SensitiveSettings,
 }
 
-#[derive(Deserialize)]
-pub struct Provider {
+#[derive(Serialize, Deserialize, PartialEq)]
+pub struct ProviderSettings {
     pub name: String,
     pub service: String,
     pub model: String,
@@ -40,13 +42,13 @@ pub struct Provider {
     pub api_timeout: u64,
     pub max_tokens: i64,
 }
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize, PartialEq)]
 pub struct SensitiveSettings {
     pub api_key: APIKey,
     pub org_id: String,
     pub org_name: String,
 }
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize, PartialEq)]
 pub struct APIKey(String); // Sensitive data
 
 /// Custom Debug implementation for Settings
@@ -122,7 +124,7 @@ impl Settings {
     }
 
     /// Function gets either the chosen provider or default provider, or gives a ProviderError
-    pub fn get_active_provider(&self) -> Result<&Provider, ProviderError> {
+    pub fn get_active_provider(&self) -> Result<&ProviderSettings, ProviderError> {
         let provider_name = self
             .chosen_provider
             .as_ref()
@@ -133,10 +135,10 @@ impl Settings {
             .ok_or_else(|| ProviderError::NotFound(provider_name.clone()))
     }
 }
-/// Custom Debug implementation for Provider
-impl fmt::Debug for Provider {
+/// Custom Debug implementation for ProviderSettings
+impl fmt::Debug for ProviderSettings {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Provider")
+        f.debug_struct("ProviderSettings")
             .field("name", &self.name)
             .field("service", &self.service)
             .field("model", &self.model)
@@ -146,10 +148,10 @@ impl fmt::Debug for Provider {
             .finish()
     }
 }
-/// Custom Display implementation for Provider
-impl fmt::Display for Provider {
+/// Custom Display implementation for ProviderSettings
+impl fmt::Display for ProviderSettings {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Provider")
+        f.debug_struct("ProviderSettings")
             .field("name", &self.name)
             .field("service", &self.service)
             .field("model", &self.model)
@@ -167,7 +169,7 @@ pub enum ProviderError {
 impl fmt::Display for ProviderError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ProviderError::NotFound(name) => write!(f, "Provider not found: {}", name),
+            ProviderError::NotFound(name) => write!(f, "ProviderSettings not found: {}", name),
         }
     }
 }
@@ -192,7 +194,12 @@ impl APIKey {
     }
 
     // Function to access the sensitive data when absolutely necessary
-    pub fn get(&self) -> &String {
+    pub fn get(&self, access_context: &str) -> &str {
+        let timestamp = SystemTime::now();
+        warn!(
+            "APIKey accessed at {:?} in context '{}'.",
+            timestamp, access_context
+        );
         &self.0
     }
 }
