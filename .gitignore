@@ -1,5 +1,5 @@
 # Rust artifacts
-/target
+/target/
 **/*.rs.bk
 
 # Generated files

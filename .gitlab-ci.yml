@@ -21,9 +21,6 @@ build_job:
   - cargo fmt --all -- --check
   - cargo clippy --all-targets --all-features -- -D warnings
   - cargo build --verbose --all
-  artifacts:
-    paths:
-      - target/
 
 test_job:
   stage: test

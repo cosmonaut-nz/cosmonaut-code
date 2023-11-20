@@ -1,15 +1,16 @@
 //! Handles the file in a software repository.
 //! Iterates over the folder structure, ignoring files or folders that are not relevant.
 //! Passes each relevant (code) file for review.
-pub mod data;
+mod data;
+mod tools;
 use crate::provider::api::ProviderCompletionResponse;
 use crate::provider::prompts::PromptData;
 use crate::provider::review_code_file;
 use crate::review::data::{FileReview, RAGStatus, RepositoryReview};
+use crate::review::tools::{is_not_blacklisted, is_valid_extension};
 use crate::settings::Settings;
 use chrono::{DateTime, Local, Utc};
-use log::debug;
-use log::{error, info};
+use log::{debug, error, info};
 use regex::Regex;
 use serde::Deserialize;
 use std::error::Error;
@@ -47,9 +48,15 @@ pub async fn assess_codebase(
     review.set_code_types(Vec::new()); // TODO: Pull together a list from the files sent through for review, append then work out percentage
 
     // Walk the repository structure sending relevant files to the provider ai service to review
-    for entry in WalkDir::new(&settings.repository_path)
+    let repository_root = Path::new(&settings.repository_path);
+    let blacklist_dirs = tools::get_blacklist_dirs(repository_root);
+    debug!("blacklist: {:?}", blacklist_dirs);
+
+    for entry in WalkDir::new(repository_root)
         .into_iter()
+        .filter_entry(|e| is_not_blacklisted(e, &blacklist_dirs))
         .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
     {
         let path = entry.path();
 
@@ -61,6 +68,10 @@ pub async fn assess_codebase(
                     if let Ok(metadata) = fs::metadata(path) {
                         if metadata.len() > 0 {
                             // File is not empty, proceed with review
+                            debug!("Handling file: {}", path.display());
+                            let _code_from_file: String = fs::read_to_string(path)?;
+                            // Create a partial FileReview struct to hold the code (refactor)
+
                             let response = review_file(&settings, path).await?;
                             review.add_file_review(response);
                         } else {
@@ -69,20 +80,13 @@ pub async fn assess_codebase(
                         }
                     }
                 } else {
-                    debug!("Invalid file extension, skipped: {}", path.display());
+                    debug!(
+                        "Non-whitelisted file extension, skipped: {}",
+                        path.display()
+                    );
                 }
             }
-        } else {
-            // TODO: add in whitelisted directories, such as "src" only
-            debug!("Directory {}.", path.display());
         }
-    }
-
-    /// Checks whether a file is valid code or configuration to review
-    fn is_valid_extension(ext: &str) -> bool {
-        // TODO: Define valid extensions comprehensively
-        let valid_extensions = ["rs", "py", "js", "cs"]; // Example extensions
-        valid_extensions.contains(&ext)
     }
 
     // Serialize the review struct to JSON
@@ -98,9 +102,10 @@ pub async fn assess_codebase(
 
     Ok(review)
 }
+
 //
 #[derive(Debug, Deserialize, Default, PartialEq)]
-pub enum ReviewType {
+enum ReviewType {
     #[default]
     General,
     Security,
@@ -136,7 +141,7 @@ async fn review_file(
 ) -> Result<FileReview, Box<dyn std::error::Error>> {
     info!("Handling output_file: {}", path.display());
     // Set up the right provider
-    let provider = settings.get_active_provider()
+    let provider: &crate::settings::ProviderSettings = settings.get_active_provider()
                                               .expect("Either a default or chosen provider should be configured in \'default.json\'. \
                                               Either none was found, or the default provider did not match any name in the configured providers list.");
     // Determine the review type and generate the appropriate prompt
@@ -146,6 +151,7 @@ async fn review_file(
         ReviewType::Security => PromptData::get_security_review_prompt(provider),
     };
 
+    // TODO move this up and have this function expect a FileReview struct instead, which includes the code from the file
     let code_from_file: String = fs::read_to_string(path)?;
     let review_request: String = format!("File name: {}\n{}\n", path.display(), code_from_file);
     // Add the file as PromptData
@@ -193,7 +199,7 @@ fn create_timestamped_filename(
 ///
 /// * `path_str` - a str representation of the path
 #[derive(Debug)]
-pub struct PathError {
+struct PathError {
     message: String,
 }
 impl PathError {

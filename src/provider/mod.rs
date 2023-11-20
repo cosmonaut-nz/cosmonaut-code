@@ -27,7 +27,7 @@ use openai_api_rs::v1::chat_completion::{self, ChatCompletionMessage, ChatComple
 ///
 /// * A response from the LLM ['ProviderResponseMessage']
 ///
-pub async fn review_code_file(
+pub(crate) async fn review_code_file(
     settings: &Settings,
     provider_settings: &ProviderSettings,
     prompt_data: PromptData,

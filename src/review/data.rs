@@ -145,12 +145,12 @@ mod tests {
     fn test_deserialize_file_review() {
         let str_json = r#"{
                     "filename": "/Users/avastmick/repos/cosmonaut-code/src/provider/static_config.rs",
-                    "summary": "The code defines a constant for a request timeout without any visible issues or security threats. However, the usage of 'pub const' could be improved for better code maintainability.",
+                    "summary": "The code defines a constant for a request timeout without any visible issues or security threats. However, the usage of 'pub (crate) const' could be improved for better code maintainability.",
                     "file_rag_status": "Green",
                     "errors": [],
                     "improvements": [
                         {
-                            "code": "pub const API_TIMEOUT: Duration = Duration::from_secs(30);",
+                            "code": "pub (crate) const API_TIMEOUT: Duration = Duration::from_secs(30);",
                             "suggestion": "Consider using a configuration file or environment variables for API_TIMEOUT to allow for flexibility without recompilation.",
                             "example": "Implement a function to load the timeout from an environment variable or a configuration file."
                         }
@@ -160,14 +160,14 @@ mod tests {
             }"#;
 
         let improvement = Improvement {
-            code: "pub const API_TIMEOUT: Duration = Duration::from_secs(30);".to_string(),
+            code: "pub (crate) const API_TIMEOUT: Duration = Duration::from_secs(30);".to_string(),
             suggestion: "Consider using a configuration file or environment variables for API_TIMEOUT to allow for flexibility without recompilation.".to_string(),
             example: "Implement a function to load the timeout from an environment variable or a configuration file.".to_string(),
         };
 
         let expected_filereview: FileReview = FileReview {
             filename: "/Users/avastmick/repos/cosmonaut-code/src/provider/static_config.rs".to_string(),
-            summary:"The code defines a constant for a request timeout without any visible issues or security threats. However, the usage of 'pub const' could be improved for better code maintainability.".to_string(),
+            summary:"The code defines a constant for a request timeout without any visible issues or security threats. However, the usage of 'pub (crate) const' could be improved for better code maintainability.".to_string(),
             file_rag_status: RAGStatus::Green,
             errors: Some(vec![]),
             improvements: Some(vec![improvement]),

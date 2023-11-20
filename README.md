@@ -46,6 +46,16 @@ we do our best to release working code.
 
 status today is: *"it works, but it is not pretty or very user friendly."*
 
+<table>
+  <thead>
+    <tr>
+      <th width="500px"> Current (version 0.1)</th>
+      <th width="500px">Next (version 1.0)</th>
+    </tr>
+  </thead>
+  <tbody>
+  <tr width="600px">
+<td>
 [X] load local repository
 
 [ ] load github repository
@@ -54,23 +64,29 @@ status today is: *"it works, but it is not pretty or very user friendly."*
 
 [X] enable openai review of code
 
+[X] output in json
+
+[ ] enable local llm review of code
+</td>
+<td>
+[ ] user interface (maybe not in rust)
+
 [ ] enable google palm review of code
 
 [ ] enable anthropic claud review of code
 
 [ ] enable meta llama review of code
 
-[ ] enable local llm review of code
-
 [ ] comparison of different llms revie output on same code (this could be very cool!)
-
-[X] output in json
 
 [ ] output in pdf
 
 [ ] run from pipeline (github actions, gitlab-ci)
+</td>
+</tr>
 
-[ ] user interface (maybe not in rust)
+  </tbody>
+</table>
 
 ## code structure
 
