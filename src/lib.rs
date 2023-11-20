@@ -1,5 +1,7 @@
 //! The codebase is composed of three separate modules.
 //!
+/// Common code and tools
+pub mod common;
 /// Handles the various generative AI agents used for file review
 /// Includes capturing specific prompts for the configured provider services
 pub mod provider;

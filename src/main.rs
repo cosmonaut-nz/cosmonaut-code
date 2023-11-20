@@ -3,6 +3,7 @@
 //!
 //!
 //!
+mod common;
 mod provider;
 mod review;
 mod settings;

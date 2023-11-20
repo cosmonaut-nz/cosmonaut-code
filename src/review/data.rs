@@ -13,12 +13,14 @@ pub enum RAGStatus {
 }
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct RepositoryReview {
-    repository_name: String,          // Derived from path
-    date: DateTime<Utc>,              // Date of execution
-    repository_purpose: String,       // Derive from README, if present, else allow user entry in UI
-    summary: String,                  // A roll up of the findings
+    repository_name: String, // Derived from path
+    #[serde(skip_serializing_if = "Option::is_none")]
+    repository_type: Option<String>, // The type of repository, e.g., Java, .Net, etc.
+    date: DateTime<Utc>,     // Date of execution
+    repository_purpose: String, // Derive from README, if present, else allow user entry in UI
+    summary: String,         // A roll up of the findings
     repository_rag_status: RAGStatus, // In {Red, Amber, Green}
-    contributors: Vec<Contributor>,   // List of contributors to the codebase from commit history
+    contributors: Vec<Contributor>, // List of contributors to the codebase from commit history
     code_types: Vec<CodeType>, // The languages (as a %) found in the repository (a la GitHub)
     filereviews: Vec<FileReview>, // Each of the code files
 }
@@ -27,6 +29,7 @@ impl RepositoryReview {
     pub fn new() -> Self {
         RepositoryReview {
             repository_name: String::new(),
+            repository_type: None,
             date: Utc::now(),
             repository_purpose: String::new(),
             summary: String::new(),
@@ -38,6 +41,9 @@ impl RepositoryReview {
     }
     pub fn set_repository_name(&mut self, name: String) {
         self.repository_name = name;
+    }
+    pub fn set_repository_type(&mut self, _type: String) {
+        self.repository_type = Some(_type);
     }
     pub fn set_date(&mut self, date: DateTime<Utc>) {
         self.date = date;
@@ -74,7 +80,7 @@ impl Default for RepositoryReview {
 /// - 'filename': The name of the file to be reviewed
 /// - 'summary': A summary of the findings of the review
 /// - 'file_rag_status': Red = urgent attention required, Amber: some issues to be addressed, Green: code okay
-/// - 'errors': a Vec of errors found in the code giving the issue and potential resolution for each
+/// - 'errors': a Vec of ['Error']s found in the code giving the issue and potential resolution for each
 /// - 'improvements': a Vec of ['Improvement']s, giving a suggestion and example for each
 /// - 'security_issues': a Vec of ['SecurityIssue']s, giving the threat and mitigation for each
 /// - 'statistics': a list of statistics (e.g., lines of code, functions, methods, etc.)
@@ -113,15 +119,34 @@ pub struct Error {
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct CodeType {
     language: String,
+    count: i32,
     percentage: i32,
 }
+impl CodeType {
+    pub fn new(language: String, count: i32, percentage: i32) -> Self {
+        Self {
+            language,
+            count,
+            percentage,
+        }
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct Contributor {
     name: String,
     last_contribution: DateTime<Utc>,
     percentage: i32,
 }
-
+impl Contributor {
+    pub fn new(name: String, last_contribution: DateTime<Utc>, percentage: i32) -> Self {
+        Self {
+            name,
+            last_contribution,
+            percentage,
+        }
+    }
+}
 ///
 /// Deserializes a str into a ['FileReview'] struct.
 ///

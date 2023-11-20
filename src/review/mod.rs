@@ -6,13 +6,16 @@ mod tools;
 use crate::provider::api::ProviderCompletionResponse;
 use crate::provider::prompts::PromptData;
 use crate::provider::review_code_file;
-use crate::review::data::{FileReview, RAGStatus, RepositoryReview};
-use crate::review::tools::{is_not_blacklisted, is_valid_extension};
+use crate::review::data::{CodeType, FileReview, RAGStatus, RepositoryReview};
+use crate::review::tools::{
+    get_git_contributors, is_not_blacklisted, is_valid_extension, LanguageFileTypes,
+};
 use crate::settings::Settings;
 use chrono::{DateTime, Local, Utc};
 use log::{debug, error, info};
 use regex::Regex;
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::fs;
@@ -29,6 +32,8 @@ use walkdir::WalkDir;
 pub async fn assess_codebase(
     settings: Settings,
 ) -> Result<RepositoryReview, Box<dyn std::error::Error>> {
+    // Load the possible language types
+    let file_types = LanguageFileTypes::new();
     // Used for the final report to write to disk
     let output_dir = PathBuf::from(&settings.report_output_path);
     let output_file_path =
@@ -40,17 +45,14 @@ pub async fn assess_codebase(
         Ok(dir_name) => review.set_repository_name(dir_name.to_string()),
         Err(e) => error!("Error extracting directory name: {}", e),
     }
-    review.set_date(Utc::now());
-    review.set_repository_purpose("purpose".to_string()); // TODO: Derive this from playing the README at the LLM
-    review.set_summary("summary".to_string()); // TODO: Pull together all the filereview summaries and send to LLM for condensing
-    review.set_repository_rag_status(RAGStatus::Green); // TODO: Derive from summing up the RAG statuses in the filereviews and calculate...
-    review.set_contributors(Vec::new()); // TODO: Derive from the `git` statistics in `git log`
-    review.set_code_types(Vec::new()); // TODO: Pull together a list from the files sent through for review, append then work out percentage
 
     // Walk the repository structure sending relevant files to the provider ai service to review
     let repository_root = Path::new(&settings.repository_path);
     let blacklist_dirs = tools::get_blacklist_dirs(repository_root);
     debug!("blacklist: {:?}", blacklist_dirs);
+
+    let mut overall_file_count: i32 = 0;
+    let mut file_types_count: HashMap<String, i32> = HashMap::new();
 
     for entry in WalkDir::new(repository_root)
         .into_iter()
@@ -63,13 +65,18 @@ pub async fn assess_codebase(
         if path.is_file() {
             // Check if the file extension is valid for review
             if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                if is_valid_extension(ext) {
+                if is_valid_extension(&file_types, &settings.repository_type, ext) {
                     // Check if the file is empty
                     if let Ok(metadata) = fs::metadata(path) {
                         if metadata.len() > 0 {
+                            if let Some(ext) = entry.path().extension().and_then(|e| e.to_str()) {
+                                let count = file_types_count.entry(ext.to_string()).or_insert(0);
+                                *count += 1;
+                            }
                             // File is not empty, proceed with review
                             debug!("Handling file: {}", path.display());
-                            let _code_from_file: String = fs::read_to_string(path)?;
+                            overall_file_count += 1;
+                            // let _code_from_file: String = fs::read_to_string(path)?;
                             // Create a partial FileReview struct to hold the code (refactor)
 
                             let response = review_file(&settings, path).await?;
@@ -88,6 +95,22 @@ pub async fn assess_codebase(
             }
         }
     }
+    let total_files: i32 = file_types_count.values().sum::<i32>();
+    let mut code_types: Vec<CodeType> = Vec::new();
+
+    for (language, count) in file_types_count {
+        let percentage: i32 = (count as f32 / total_files as f32 * 100.0).round() as i32;
+        code_types.push(CodeType::new(language, count, percentage));
+    }
+
+    // Complete the fields in the ['RepositoryReview'] struct
+    review.set_repository_type("Rust".to_string()); // TODO derive from the predominant code in the languages, or set is via user settings..?
+    review.set_date(Utc::now());
+    review.set_repository_purpose("purpose".to_string()); // TODO: Derive this from playing the README at the LLM
+    review.set_summary("summary".to_string()); // TODO: Pull together all the filereview summaries and send to LLM for condensing
+    review.set_repository_rag_status(RAGStatus::Green); // TODO: Derive from summing up the RAG statuses in the filereviews and calculate...
+    review.set_contributors(get_git_contributors(&settings.repository_path));
+    review.set_code_types(code_types);
 
     // Serialize the review struct to JSON
     let review_json = serde_json::to_string_pretty(&review)
@@ -100,6 +123,7 @@ pub async fn assess_codebase(
         .write_all(review_json.as_bytes())
         .map_err(|e| format!("Error writing to output file: {}", e))?;
 
+    info!("Total number of files processed: {}", overall_file_count);
     Ok(review)
 }
 
