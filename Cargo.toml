@@ -2,6 +2,15 @@
 name = "cosmonaut_code"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/cosmonaut-nz/cosmonaut-code"
+homepage = ""
+description = """
+A tool to review and assess the quality, security and maintainability of a codebase.
+"""
+categories = ["ai", "code"]
+keywords = ["ai", "helper", "code-review", "assessment"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -22,6 +31,11 @@ walkdir = "2.4.0"
 regex = "1.10.2"
 async-trait = "0.1.74"
 git2 = "0.18.1"
+# linguist-rs = "1.1.0" # Using direct repository fetch in place of crates.io as version is out of date (local code changes)
+linguist-rs = { git = "https://github.com/cosmonaut-nz/linguist-rs.git", features = ["default", "github-linguist-yaml"] }
 
 [dev-dependencies]
 tempfile = "3.8.1"
+
+[build-dependencies]
+linguist-rs-build = { git = "https://github.com/cosmonaut-nz/linguist-rs.git" }

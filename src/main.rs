@@ -21,14 +21,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::process::exit(1); // Exit if settings cannot be loaded
         }
     };
-    debug!("Settings loaded: {:?}", settings);
+    debug!("SETTINGS LOADED: {:?}", settings);
 
     // TODO: Wire up CLI here.
 
     // Call the assess_codebase, according to user configuration, either from commandline, or json settings files.
     review::assess_codebase(settings).await?;
 
-    info!("Code review complete. See the output report for details.");
+    info!("CODE REVIEW COMPLETE. See the output report for details.");
 
     Ok(())
 }

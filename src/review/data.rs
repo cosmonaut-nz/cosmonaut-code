@@ -21,8 +21,8 @@ pub struct RepositoryReview {
     summary: String,         // A roll up of the findings
     repository_rag_status: RAGStatus, // In {Red, Amber, Green}
     contributors: Vec<Contributor>, // List of contributors to the codebase from commit history
-    code_types: Vec<CodeType>, // The languages (as a %) found in the repository (a la GitHub)
-    filereviews: Vec<FileReview>, // Each of the code files
+    language_file_types: Vec<LanguageFileType>, // The languages (as a %) found in the repository (a la GitHub)
+    filereviews: Vec<FileReview>,               // Each of the code files
 }
 // TODO move over to impl_builder_methods!
 impl RepositoryReview {
@@ -35,7 +35,7 @@ impl RepositoryReview {
             summary: String::new(),
             repository_rag_status: RAGStatus::Green,
             contributors: Vec::new(),
-            code_types: Vec::new(),
+            language_file_types: Vec::new(),
             filereviews: Vec::new(),
         }
     }
@@ -60,8 +60,8 @@ impl RepositoryReview {
     pub fn set_contributors(&mut self, contributors: Vec<Contributor>) {
         self.contributors = contributors;
     }
-    pub fn set_code_types(&mut self, code_types: Vec<CodeType>) {
-        self.code_types = code_types;
+    pub fn set_lfts(&mut self, language_file_types: Vec<LanguageFileType>) {
+        self.language_file_types = language_file_types;
     }
     pub fn add_file_review(&mut self, file_review: FileReview) {
         self.filereviews.push(file_review);
@@ -117,31 +117,37 @@ pub struct Error {
     resolution: String,
 }
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
-pub struct CodeType {
-    language: String,
-    count: i32,
-    percentage: i32,
+pub struct LanguageFileType {
+    pub language: String,
+    pub extension: String,
+    pub percentage: f64,
+    pub total_size: u64,
+    pub file_count: i32,
 }
-impl CodeType {
-    pub fn new(language: String, count: i32, percentage: i32) -> Self {
-        Self {
-            language,
-            count,
-            percentage,
-        }
+impl LanguageFileType {
+    // Method to check if an extension is valid among a collection of LanguageFileType
+    pub fn has_extension_of(ext: &str, file_types: &[LanguageFileType]) -> bool {
+        file_types.iter().any(|lft| lft.extension == ext)
     }
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct Contributor {
     name: String,
+    num_commits: i32,
     last_contribution: DateTime<Utc>,
     percentage: i32,
 }
 impl Contributor {
-    pub fn new(name: String, last_contribution: DateTime<Utc>, percentage: i32) -> Self {
+    pub fn new(
+        name: String,
+        num_commits: i32,
+        last_contribution: DateTime<Utc>,
+        percentage: i32,
+    ) -> Self {
         Self {
             name,
+            num_commits,
             last_contribution,
             percentage,
         }

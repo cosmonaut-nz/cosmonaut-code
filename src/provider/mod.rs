@@ -9,7 +9,6 @@ use crate::provider::api::{
 };
 use crate::provider::prompts::PromptData;
 use crate::settings::{ProviderSettings, Settings};
-use log::error;
 use openai_api_rs::v1::api::Client;
 use openai_api_rs::v1::chat_completion::{self, ChatCompletionMessage, ChatCompletionRequest};
 
@@ -36,7 +35,7 @@ pub(crate) async fn review_code_file(
         Ok(provider_handler) => provider_handler.review_code(settings, prompt_data).await,
         Err(err) => Err(Box::new(std::io::Error::new(
             std::io::ErrorKind::Other,
-            err,
+            format!("API provider error: {}", err),
         ))),
     }
 }
@@ -44,17 +43,16 @@ pub(crate) async fn review_code_file(
 /// Creates an APIProvider according to provider_settings.name
 fn create_api_provider(
     provider_settings: &ProviderSettings,
-) -> Result<Box<dyn APIProvider>, String> {
+) -> Result<Box<dyn APIProvider>, Box<dyn std::error::Error>> {
     match provider_settings.name.to_lowercase().as_str() {
         "openai" => Ok(Box::new(OpenAIProvider {
             model: provider_settings.model.clone(),
         })),
-        // Add cases for other providers here
-        _ => {
-            let err_msg = format!("Unsupported provider: {}", provider_settings.name);
-            error!("{}", err_msg);
-            Err(err_msg)
-        }
+        // Throw an error
+        _ => Err(Box::new(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("Unsupported provider: {}", provider_settings.name),
+        ))),
     }
 }
 
