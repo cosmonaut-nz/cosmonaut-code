@@ -11,10 +11,16 @@ it's in pure rust! :p (so far...)
 
 ### goals
 
-1. provide a viable local source tree and project analysis tool using various tools and generative ai agents. ideal for pre-pr checking by a developer.
-2. create a tool that can be added to a build to ensure that no significant errors are in the code.
+1. provide a viable tool for local codebase analysis.
+2. provide a tool that will help developers and code maintainers manage their code and start a conversation.
 3. allow code owners to check the overall health of the code in a simple way.
 4. output an actionable report that will improve the code base.
+
+### non-goals
+
+1. provide a tool that will automagically improve a codebase.
+2. provide a tool that does not require review or analysis of the code.
+3. provide a tool that does not require thinking or discussion.
 
 ### use cases
 
@@ -42,17 +48,45 @@ see [contributing](CONTRIBUTING.md) for the rules, they are standard though.
 
 ## work status
 
-we do our best to release working code.
+we do our best to release working code. we hacked this out pretty quickly so the code's quality is not all that right now.
 
 status today is: *"it works, but it is not pretty or very user friendly."*
 
+## outline tasks
+
+<table>
+  <thead>
+    <tr>
+      <th width="50%"> Current (version 0.1)</th>
+      <th width="50%">Next (version 1.0)</th>
+    </tr>
+  </thead>
+  <tbody>
+  <tr width="100%">
+<td>
+
 [X] load local repository
 
-[ ] load github repository
-
-[ ] load gitlab code repository
-
 [X] enable openai review of code
+
+[X] output in json
+
+[ ] output in pdf
+
+[ ] tune the prompts for clarity and accuracy
+
+[ ] run from pipeline (github actions, gitlab-ci)
+
+[ ] enable local llm review of code (likely llama based)
+
+</td>
+<td>
+
+[ ] user interface (maybe not in rust, if not then in python)
+
+[ ] load github repository remotely
+
+[ ] load gitlab code repository remotely
 
 [ ] enable google palm review of code
 
@@ -60,28 +94,29 @@ status today is: *"it works, but it is not pretty or very user friendly."*
 
 [ ] enable meta llama review of code
 
-[ ] enable local llm review of code
+[ ] comparison of different llms review output on same code (this could be very cool!)
 
-[ ] comparison of different llms revie output on same code (this could be very cool!)
+</td>
+</tr>
 
-[X] output in json
+  </tbody>
+</table>
 
-[ ] output in pdf
+## code
 
-[ ] run from pipeline (github actions, gitlab-ci)
-
-[ ] user interface (maybe not in rust)
-
-## code structure
+### structure
 
 The code is broken into modules to ensure a separation of concerns:
 
 - `provider` - managing the LLM providers and API calls to review code files
 - `review` - managing the review of the repository, including handling the filesystem and reading in of files
 - `settings` - a set of data structures that enable easy application configuration
+- `common` - a set of common code, macros and alike
 
 ```plaintext
 src
+├── common
+│   └── mod.rs
 ├── lib.rs
 ├── main.rs
 ├── provider

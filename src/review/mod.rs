@@ -1,17 +1,21 @@
 //! Handles the file in a software repository.
 //! Iterates over the folder structure, ignoring files or folders that are not relevant.
 //! Passes each relevant (code) file for review.
-pub mod data;
+pub mod code;
+mod data;
+mod tools;
 use crate::provider::api::ProviderCompletionResponse;
 use crate::provider::prompts::PromptData;
 use crate::provider::review_code_file;
-use crate::review::data::{FileReview, RAGStatus, RepositoryReview};
+use crate::review::data::{FileReview, LanguageFileType, RAGStatus, RepositoryReview};
+use crate::review::tools::{get_git_contributors, is_not_blacklisted};
 use crate::settings::Settings;
 use chrono::{DateTime, Local, Utc};
-use log::debug;
-use log::{error, info};
+use code::analyse_languages_in_repository;
+use log::{debug, error, info};
 use regex::Regex;
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::fs;
@@ -39,28 +43,54 @@ pub async fn assess_codebase(
         Ok(dir_name) => review.set_repository_name(dir_name.to_string()),
         Err(e) => error!("Error extracting directory name: {}", e),
     }
-    review.set_date(Utc::now());
-    review.set_repository_purpose("purpose".to_string()); // TODO: Derive this from playing the README at the LLM
-    review.set_summary("summary".to_string()); // TODO: Pull together all the filereview summaries and send to LLM for condensing
-    review.set_repository_rag_status(RAGStatus::Green); // TODO: Derive from summing up the RAG statuses in the filereviews and calculate...
-    review.set_contributors(Vec::new()); // TODO: Derive from the `git` statistics in `git log`
-    review.set_code_types(Vec::new()); // TODO: Pull together a list from the files sent through for review, append then work out percentage
 
     // Walk the repository structure sending relevant files to the provider ai service to review
-    for entry in WalkDir::new(&settings.repository_path)
+    let repository_root = Path::new(&settings.repository_path);
+
+    if !repository_root.is_dir() {
+        return Err(Box::new(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!(
+                "Provided path is not a directory: {}",
+                &settings.repository_path
+            ),
+        )));
+    }
+
+    // First pass: get the repository file types and languages
+    // Review the repository and get the overall language file types to process
+    let repo_lfts: Vec<LanguageFileType> = analyse_languages_in_repository(repository_root);
+    debug!("REPOSITORY LANGUAGE FILE TYPES: {:?}", repo_lfts);
+    let blacklisted_dirs: Vec<String> = tools::get_blacklist_dirs(repository_root);
+    debug!("BLACKLIST: {:?}", blacklisted_dirs);
+
+    let mut overall_file_count: i32 = 0;
+    let mut file_types_count: HashMap<String, i32> = HashMap::new();
+    // Second pass: review code files
+    for entry in WalkDir::new(repository_root)
         .into_iter()
+        .filter_entry(|e| is_not_blacklisted(e, &blacklisted_dirs))
         .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
     {
         let path = entry.path();
-
         if path.is_file() {
             // Check if the file extension is valid for review
             if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                if is_valid_extension(ext) {
+                if LanguageFileType::has_extension_of(ext, &repo_lfts) {
                     // Check if the file is empty
                     if let Ok(metadata) = fs::metadata(path) {
                         if metadata.len() > 0 {
+                            if let Some(ext) = entry.path().extension().and_then(|e| e.to_str()) {
+                                let count = file_types_count.entry(ext.to_string()).or_insert(0);
+                                *count += 1;
+                            }
                             // File is not empty, proceed with review
+                            debug!("Handling file: {}", path.display());
+                            overall_file_count += 1;
+                            let _code_from_file: String = fs::read_to_string(path)?;
+                            // Create a partial FileReview struct to hold the code (refactor)
+
                             let response = review_file(&settings, path).await?;
                             review.add_file_review(response);
                         } else {
@@ -69,21 +99,22 @@ pub async fn assess_codebase(
                         }
                     }
                 } else {
-                    debug!("Invalid file extension, skipped: {}", path.display());
+                    debug!(
+                        "Non-whitelisted file extension, skipped: {}",
+                        path.display()
+                    );
                 }
             }
-        } else {
-            // TODO: add in whitelisted directories, such as "src" only
-            debug!("Directory {}.", path.display());
         }
     }
-
-    /// Checks whether a file is valid code or configuration to review
-    fn is_valid_extension(ext: &str) -> bool {
-        // TODO: Define valid extensions comprehensively
-        let valid_extensions = ["rs", "py", "js", "cs"]; // Example extensions
-        valid_extensions.contains(&ext)
-    }
+    // Complete the fields in the ['RepositoryReview'] struct
+    review.set_repository_type(settings.repository_type);
+    review.set_date(Utc::now());
+    review.set_repository_purpose("purpose".to_string()); // TODO: Derive this from playing the README at the LLM
+    review.set_summary("summary".to_string()); // TODO: Pull together all the filereview summaries and send to LLM for condensing
+    review.set_repository_rag_status(RAGStatus::Green); // TODO: Derive from summing up the RAG statuses in the filereviews and calculate...
+    review.set_contributors(get_git_contributors(&settings.repository_path));
+    review.set_lfts(repo_lfts);
 
     // Serialize the review struct to JSON
     let review_json = serde_json::to_string_pretty(&review)
@@ -96,11 +127,13 @@ pub async fn assess_codebase(
         .write_all(review_json.as_bytes())
         .map_err(|e| format!("Error writing to output file: {}", e))?;
 
+    info!("Total number of files processed: {}", overall_file_count);
     Ok(review)
 }
+
 //
 #[derive(Debug, Deserialize, Default, PartialEq)]
-pub enum ReviewType {
+enum ReviewType {
     #[default]
     General,
     Security,
@@ -136,7 +169,7 @@ async fn review_file(
 ) -> Result<FileReview, Box<dyn std::error::Error>> {
     info!("Handling output_file: {}", path.display());
     // Set up the right provider
-    let provider = settings.get_active_provider()
+    let provider: &crate::settings::ProviderSettings = settings.get_active_provider()
                                               .expect("Either a default or chosen provider should be configured in \'default.json\'. \
                                               Either none was found, or the default provider did not match any name in the configured providers list.");
     // Determine the review type and generate the appropriate prompt
@@ -146,6 +179,7 @@ async fn review_file(
         ReviewType::Security => PromptData::get_security_review_prompt(provider),
     };
 
+    // TODO move this up and have this function expect a FileReview struct instead, which includes the code from the file
     let code_from_file: String = fs::read_to_string(path)?;
     let review_request: String = format!("File name: {}\n{}\n", path.display(), code_from_file);
     // Add the file as PromptData
@@ -193,7 +227,7 @@ fn create_timestamped_filename(
 ///
 /// * `path_str` - a str representation of the path
 #[derive(Debug)]
-pub struct PathError {
+struct PathError {
     message: String,
 }
 impl PathError {

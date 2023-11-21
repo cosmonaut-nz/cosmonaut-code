@@ -26,6 +26,7 @@ pub struct Settings {
     pub default_provider: String,
     pub output_type: String,
     pub review_type: i32,
+    pub repository_type: String,
     pub repository_path: String,
     pub report_output_path: String,
 
@@ -60,6 +61,7 @@ impl fmt::Debug for Settings {
             .field("default_provider", &self.default_provider)
             .field("output_type", &self.output_type)
             .field("review_type", &self.review_type)
+            .field("repository_type", &self.review_type)
             .field("repository_path", &self.repository_path)
             .field("report_output_path", &self.report_output_path)
             .field("sensitive", &"*** sensitive data hidden ***")
@@ -75,6 +77,7 @@ impl fmt::Display for Settings {
             .field("default_provider", &self.default_provider)
             .field("output_type", &self.output_type)
             .field("review_type", &self.review_type)
+            .field("repository_type", &self.review_type)
             .field("repository_path", &self.repository_path)
             .field("report_output_path", &self.report_output_path)
             .field("sensitive", &"*** sensitive data hidden ***")
@@ -91,6 +94,7 @@ impl fmt::Display for Settings {
 /// - `default_provider`: Default is openai.
 /// - `chosen_provider`: The user selected provider from the configured list.
 /// - `sensitive settings`: Inc. API key for authentication, org_id and org_name.
+/// - `repository_type`: The type of repository, e.g., 'java-server', or 'javascript-web', etc.
 /// - `repository_path`: The user selected path to the folder containing repository and code for analysis.
 /// - `report_output_path`: The user selected path where analysis output report will be stored.
 /// - `output_type`: The user selected format/type of the output (e.g., json, pdf). Default is JSON.
