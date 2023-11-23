@@ -2,16 +2,16 @@ name: Rust Check
 
 on:
   push:
-    branches: 
-      - '**'
+    branches: [ "main" ]
   pull_request:
-    branches: [ main ]
+    branches: [ "main" ]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  check:
+  build:
+
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
@@ -29,3 +29,4 @@ jobs:
       run: cargo fmt -- --check
     - name: Check clippy
       run: cargo clippy --all-targets --all-features -- -D warnings
+
