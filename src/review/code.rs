@@ -79,6 +79,9 @@ pub fn analyse_file_language(
         || is_dotfile(relative_path)
         || is_configuration(relative_path)
     {
+        // TODO: handle if is_documentation: if so then work out frequency; higher the count the better for overall RAG
+        //          if no documentation then needs to be in repository summary and flagged as issue
+        //          - i.e. best practice is that documentation is versioned with code, new developers will find it more easily, etc.
         return None;
     }
     let language: &Language = match resolve_language(path, lc) {

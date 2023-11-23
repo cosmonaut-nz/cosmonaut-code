@@ -35,9 +35,13 @@ it's in pure rust! :p (so far...)
 
 ## how to use
 
-### installation
+### disclaimer
 
-right now it's a barebones offering.
+this is really early days. running over a really big repo with the latest model will be super slow and likely fail. we've tested it up to ~1500 code files; worked 50% of the time, what with timeouts etc. cost about $5US. your mileage may vary. i think the value will come when it can be run over multiple models and compared and filtered.
+
+right now it's a barebones offering. it kinda works, and we have got value from it, but there is a lot more to do. but it's been fun to do.
+
+### installation
 
 install rust:
 
@@ -49,11 +53,52 @@ clone the repo:
 
 `cd costmonaut-code`
 
+Add a `development.json` with the following:
+
+```json
+
+{
+    "sensitive": {
+        "api_key": "[YOUR_OPENAI_API_KEY]",
+        "org_id": "[YOUR_OPENAI_ORG_ID]",
+        "org_name": "[YOUR_OPENAI_ORG_NAME]"
+    },
+    "repository_path": "[FULL_PATH_TO_REPO]",
+    "report_output_path": "[FULL_PATH_TO_OUTPUT]"
+}
+
+```
+
+_Optional_
+
+Edit the `settings/default.json` to change the current defaults
+
+```json
+
+{
+    "providers": [
+        {
+            "name": "openai",
+            "service": "gpt-4",
+            "model": "gpt-4-1106-preview",
+            "api_url": "https://api.openai.com/v1/chat/completions",
+            "api_timeout": 60,
+            "max_tokens": 4000
+        }
+    ],
+    "chosen_provider": null, 
+    "default_provider": "openai",
+    "output_type": "json",
+    "review_type": 1
+}
+
+```
+
 run:
 
 `cargo run`
 
-later there will be downloadables so you don't have to install rust.
+later there will be downloadable binaries so you don't have to install rust.
 
 ## contributing
 
@@ -85,6 +130,8 @@ status today is: *"it works, but it is not pretty or very user friendly."*
 [X] enable openai review of code
 
 [X] output in json
+
+[ ] packaging so user can either install via `cargo install` or download the binary.
 
 [ ] output in pdf
 

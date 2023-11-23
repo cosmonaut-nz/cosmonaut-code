@@ -12,8 +12,6 @@ A tool to review and assess the quality, security and maintainability of a codeb
 categories = ["ai", "code"]
 keywords = ["ai", "helper", "code-review", "assessment"]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 openai-api-rs = "2.1.0"
 thiserror = "1.0.50"
@@ -33,7 +31,6 @@ async-trait = "0.1.74"
 git2 = "0.18.1"
 # linguist-rs = "1.1.0" # Using direct repository fetch in place of crates.io as version is out of date (local code changes)
 linguist-rs = { git = "https://github.com/cosmonaut-nz/linguist-rs.git" }
-# linguist-rs = { path = "/Users/avastmick/repos/linguist-rs/linguist"}
 
 
 [dev-dependencies]
