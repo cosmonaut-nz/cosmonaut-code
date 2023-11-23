@@ -6,14 +6,13 @@
 //!
 //!
 use config::{Config, ConfigError, File};
-use log::warn;
+use log::{info, warn};
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fmt;
 use std::time::SystemTime;
 
-const SETTINGS_FILE_PATH: &str = "settings";
-const APP_ENV_PREFIX: &str = "COSMOCODE";
+const SETTINGS_FILE_PATH: &str = "settings"; // TODO: determine the right path when packaged
 
 /// struct to hold the configuration
 ///
@@ -26,9 +25,10 @@ pub struct Settings {
     pub default_provider: String,
     pub output_type: String,
     pub review_type: i32,
-    pub repository_type: String,
     pub repository_path: String,
     pub report_output_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_file_count: Option<i32>,
 
     // Sensitive data
     pub sensitive: SensitiveSettings,
@@ -61,7 +61,6 @@ impl fmt::Debug for Settings {
             .field("default_provider", &self.default_provider)
             .field("output_type", &self.output_type)
             .field("review_type", &self.review_type)
-            .field("repository_type", &self.review_type)
             .field("repository_path", &self.repository_path)
             .field("report_output_path", &self.report_output_path)
             .field("sensitive", &"*** sensitive data hidden ***")
@@ -77,7 +76,6 @@ impl fmt::Display for Settings {
             .field("default_provider", &self.default_provider)
             .field("output_type", &self.output_type)
             .field("review_type", &self.review_type)
-            .field("repository_type", &self.review_type)
             .field("repository_path", &self.repository_path)
             .field("report_output_path", &self.report_output_path)
             .field("sensitive", &"*** sensitive data hidden ***")
@@ -94,7 +92,6 @@ impl fmt::Display for Settings {
 /// - `default_provider`: Default is openai.
 /// - `chosen_provider`: The user selected provider from the configured list.
 /// - `sensitive settings`: Inc. API key for authentication, org_id and org_name.
-/// - `repository_type`: The type of repository, e.g., 'java-server', or 'javascript-web', etc.
 /// - `repository_path`: The user selected path to the folder containing repository and code for analysis.
 /// - `report_output_path`: The user selected path where analysis output report will be stored.
 /// - `output_type`: The user selected format/type of the output (e.g., json, pdf). Default is JSON.
@@ -103,20 +100,22 @@ impl fmt::Display for Settings {
 /// `review_type` and `output_type` have default values, but other fields must be explicitly set.
 impl Settings {
     pub fn new() -> Result<Self, ConfigError> {
-        // Enable dev mode usage
-        let run_mode = env::var("RUN_MODE").unwrap_or_else(|_| {
-            warn!("RUN_MODE not set, defaulting to 'development'");
-            "development".into()
-        });
+        // Determine run mode based on build profile
+        let default_run_mode = if cfg!(debug_assertions) {
+            // Default to 'development' if in debug mode
+            warn!("RUN_MODE not set, defaulting to 'development' (debug build)");
+            "development"
+        } else {
+            // default is production
+            info!("RUN_MODE not set, defaulting to 'production' (release build)");
+            "production"
+        };
+        let run_mode = env::var("RUN_MODE").unwrap_or_else(|_| default_run_mode.into());
+
         //Load the config,
         let config = Config::builder()
             // Start off by merging in the "default" configuration file
             .add_source(File::with_name(&format!("{}/default", SETTINGS_FILE_PATH)).required(false))
-            .add_source(
-                config::Environment::with_prefix(APP_ENV_PREFIX)
-                    .try_parsing(true)
-                    .separator("_"),
-            )
             // Default to (optional) 'development' env
             .add_source(
                 File::with_name(&format!("{}/{}", SETTINGS_FILE_PATH, run_mode)).required(false),
@@ -191,6 +190,7 @@ impl fmt::Display for SensitiveSettings {
 }
 /// Locking up the APIKey to prevent accidental display
 /// Note: `fn new(key: String) -> Self` is used by Settings::new, however the compiler moans, so added dead_code allowance
+/// TODO: Suggested: Replace the direct accessor with a closure-based accessor that accepts a function to operate on the key, without ever returning the value directly.
 impl APIKey {
     #[allow(dead_code)]
     pub fn new(key: String) -> Self {

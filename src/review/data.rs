@@ -16,13 +16,15 @@ pub struct RepositoryReview {
     repository_name: String, // Derived from path
     #[serde(skip_serializing_if = "Option::is_none")]
     repository_type: Option<String>, // The type of repository, e.g., Java, .Net, etc.
-    date: DateTime<Utc>,     // Date of execution
+    date: String,            // Date of execution (formatted)
     repository_purpose: String, // Derive from README, if present, else allow user entry in UI
     summary: String,         // A roll up of the findings
     repository_rag_status: RAGStatus, // In {Red, Amber, Green}
+    sum_loc: Option<i64>,    // Total lines of code
+    sum_num_files: Option<i32>, // Total number of files
     contributors: Vec<Contributor>, // List of contributors to the codebase from commit history
     language_file_types: Vec<LanguageFileType>, // The languages (as a %) found in the repository (a la GitHub)
-    filereviews: Vec<FileReview>,               // Each of the code files
+    pub filereviews: Vec<FileReview>,           // Each of the code files
 }
 // TODO move over to impl_builder_methods!
 impl RepositoryReview {
@@ -30,14 +32,19 @@ impl RepositoryReview {
         RepositoryReview {
             repository_name: String::new(),
             repository_type: None,
-            date: Utc::now(),
+            date: String::new(),
             repository_purpose: String::new(),
             summary: String::new(),
             repository_rag_status: RAGStatus::Green,
+            sum_loc: None,
+            sum_num_files: None,
             contributors: Vec::new(),
             language_file_types: Vec::new(),
             filereviews: Vec::new(),
         }
+    }
+    pub fn get_file_reviews(&self) -> &Vec<FileReview> {
+        &self.filereviews
     }
     pub fn set_repository_name(&mut self, name: String) {
         self.repository_name = name;
@@ -45,7 +52,7 @@ impl RepositoryReview {
     pub fn set_repository_type(&mut self, _type: String) {
         self.repository_type = Some(_type);
     }
-    pub fn set_date(&mut self, date: DateTime<Utc>) {
+    pub fn set_date(&mut self, date: String) {
         self.date = date;
     }
     pub fn set_repository_purpose(&mut self, purpose: String) {
@@ -56,6 +63,12 @@ impl RepositoryReview {
     }
     pub fn set_repository_rag_status(&mut self, status: RAGStatus) {
         self.repository_rag_status = status;
+    }
+    pub fn set_sum_loc(&mut self, loc: i64) {
+        self.sum_loc = Some(loc);
+    }
+    pub fn set_num_files(&mut self, num: i32) {
+        self.sum_num_files = Some(num);
     }
     pub fn set_contributors(&mut self, contributors: Vec<Contributor>) {
         self.contributors = contributors;
@@ -87,15 +100,32 @@ impl Default for RepositoryReview {
 ///
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct FileReview {
-    filename: String,           // The name of the file
-    summary: String,            // A summary of the findings of the review
-    file_rag_status: RAGStatus, // In {Red, Amber, Green}
+    pub filename: String,           // The name of the file
+    pub summary: String,            // A summary of the findings of the review
+    pub file_rag_status: RAGStatus, // In {Red, Amber, Green}
     #[serde(skip_serializing_if = "Option::is_none")]
-    errors: Option<Vec<Error>>, // A list of errors found in the code giving the issue and potential resolution for each
+    pub errors: Option<Vec<Error>>, // A list of errors found in the code giving the issue and potential resolution for each
     #[serde(skip_serializing_if = "Option::is_none")]
-    improvements: Option<Vec<Improvement>>, // A list of improvements, giving a suggestion and example for each
-    security_issues: Vec<SecurityIssue>, // A list of security issues, giving the threat and mitigation for each
-    statistics: String, // A list of statistics (e.g., lines of code, functions, methods, etc.)
+    pub improvements: Option<Vec<Improvement>>, // A list of improvements, giving a suggestion and example for each
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub security_issues: Option<Vec<SecurityIssue>>, // A list of security issues, giving the threat and mitigation for each
+    pub statistics: String, // A list of statistics (e.g., lines of code, functions, methods, etc.)
+}
+
+impl FileReview {
+    #[allow(dead_code)]
+    pub fn get_improvements(&self) -> &Option<Vec<Improvement>> {
+        &self.improvements
+    }
+    pub fn get_errors(&self) -> &Option<Vec<Error>> {
+        &self.errors
+    }
+    pub fn get_security_issues(&self) -> &Option<Vec<SecurityIssue>> {
+        &self.security_issues
+    }
+    pub fn get_file_rag_status(&self) -> &RAGStatus {
+        &self.file_rag_status
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
@@ -121,13 +151,34 @@ pub struct LanguageFileType {
     pub language: String,
     pub extension: String,
     pub percentage: f64,
+    pub loc: i64,
     pub total_size: u64,
     pub file_count: i32,
 }
 impl LanguageFileType {
     // Method to check if an extension is valid among a collection of LanguageFileType
-    pub fn has_extension_of(ext: &str, file_types: &[LanguageFileType]) -> bool {
+    pub fn _has_extension_of(ext: &str, file_types: &[LanguageFileType]) -> bool {
         file_types.iter().any(|lft| lft.extension == ext)
+    }
+    pub fn sum_lines_of_code(language_file_types: &[LanguageFileType]) -> i64 {
+        language_file_types.iter().map(|lft| lft.loc).sum()
+    }
+    pub fn get_predominant_language(languages: &[LanguageFileType]) -> Option<String> {
+        let mut predominant_language = None;
+        let mut highest_percentage = 0.0;
+        let mut largest_size = 0;
+
+        for lang in languages {
+            if lang.percentage > highest_percentage
+                || (lang.percentage == highest_percentage && lang.total_size > largest_size)
+            {
+                highest_percentage = lang.percentage;
+                largest_size = lang.total_size;
+                predominant_language = Some(lang.language.clone());
+            }
+        }
+
+        predominant_language
     }
 }
 
@@ -202,7 +253,7 @@ mod tests {
             file_rag_status: RAGStatus::Green,
             errors: Some(vec![]),
             improvements: Some(vec![improvement]),
-            security_issues: vec![],
+            security_issues: Some(vec![]),
             statistics: "Lines of code: 6, Constants: 1, Imports: 1, Comments: 2".to_string(),
         };
         match deserialize_file_review(str_json) {
