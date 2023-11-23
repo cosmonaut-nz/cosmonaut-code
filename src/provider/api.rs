@@ -1,6 +1,5 @@
 //! Provides a suite of structs, traits and functions to marshall provider-specific API needs
 //!
-use crate::provider::prompts::PromptData;
 use openai_api_rs::v1::chat_completion::{
     ChatCompletionChoice, ChatCompletionMessage, ChatCompletionMessageForResponse,
     ChatCompletionResponse, MessageRole,
@@ -17,7 +16,6 @@ use serde::{Deserialize, Serialize};
 // Data structures that can be outbound (requests) or inbound (responses)
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[allow(non_camel_case_types)]
 pub enum ProviderMessageRole {
     User,
     System,
@@ -26,38 +24,10 @@ pub enum ProviderMessageRole {
 }
 
 // Outbound data structures - i.e. for requests to the provider LLM
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProviderCompletionMessage {
     pub role: ProviderMessageRole,
     pub content: String,
-}
-
-impl ProviderMessageRole {
-    #[allow(dead_code)]
-    pub fn provider_message_role_from_str(role: &str) -> Option<ProviderMessageRole> {
-        match role {
-            "user" => Some(ProviderMessageRole::User),
-            "system" => Some(ProviderMessageRole::System),
-            "assistant" => Some(ProviderMessageRole::Assistant),
-            "function" => Some(ProviderMessageRole::Function),
-            _ => None,
-        }
-    }
-}
-
-/// Holds a Vec of ['ProviderOutputMessage']s to configure the request to the LLM
-impl PromptData {
-    #[allow(dead_code)]
-    pub fn to_provider_messages<C: ProviderMessageConverter>(
-        &self,
-        converter: &C,
-    ) -> Vec<C::ProviderOutputMessage> {
-        self.messages
-            .iter()
-            .map(|m| converter.convert_message(m))
-            .collect()
-    }
 }
 
 // Inbound data structures - i.e. for reponses from the provider LLM
@@ -81,7 +51,7 @@ pub struct ProviderResponseMessage {
 // Provider specific data structure conversion - i.e. create an openai ['ChatCompletionMessage'] from an generic ['ProviderCompletionMessage']
 
 // Request conversions
-/// Converts a ['ProviderCompletionMessage'] struct into a ['ProviderSpecificMessage']
+/// Converts a [`ProviderCompletionMessage`] struct into a [`ProviderSpecificMessage`]
 pub trait ProviderMessageConverter {
     type ProviderOutputMessage;
 
@@ -137,7 +107,7 @@ pub trait ProviderResponseConverter {
 
 /// OpenAI converter
 pub struct OpenAIResponseConverter;
-/// converts an openai_api_rs ChatCompletionResponse to a ['ProviderCompletionResponse']
+/// converts an openai_api_rs [`ChatCompletionResponse`] to a [`ProviderCompletionResponse`]
 impl ProviderResponseConverter for OpenAIResponseConverter {
     fn convert_response(&self, response: &ChatCompletionResponse) -> ProviderCompletionResponse {
         ProviderCompletionResponse {

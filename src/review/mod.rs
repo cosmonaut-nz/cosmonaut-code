@@ -7,15 +7,14 @@ mod tools;
 use crate::provider::api::ProviderCompletionResponse;
 use crate::provider::prompts::PromptData;
 use crate::provider::review_code_file;
+use crate::review::code::{analyse_file_language, initialize_language_analysis};
 use crate::review::data::{FileReview, LanguageFileType, RAGStatus, RepositoryReview};
 use crate::review::tools::{get_git_contributors, is_not_blacklisted};
 use crate::settings::Settings;
 use chrono::{DateTime, Local, Utc};
-use code::analyse_languages_in_repository;
 use log::{debug, error, info};
 use regex::Regex;
 use serde::Deserialize;
-use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::fs;
@@ -24,11 +23,29 @@ use std::path::Path;
 use std::path::PathBuf;
 use walkdir::WalkDir;
 
+// TODO: "security_issues": [
+//         {
+//           "code": "fn assess_codebase",
+//           "threat": "Improper error handling may lead to information disclosure if stack traces or internal details are exposed to the user.",
+//           "mitigation": "Implement proper error handling and avoid exposing internal details."
+//         },
+//         {
+//           "code": "fn review_file",
+//           "threat": "Injection of control characters could lead to JSON parsing vulnerabilities.",
+//           "mitigation": "Ensure rigorous input sanitization and validation."
+//         },
+//         {
+//           "code": "regex::Regex::new(r\"[\\x00-\\x1F]\")",
+//           "threat": "Misuse of regular expressions could introduce performance issues (ReDoS) or crashes due to faulty patterns.",
+//           "mitigation": "Carefully craft regular expressions and consider using precompiled ones."
+//         }
+//       ],
+
 /// Takes the filepath to a repository and iterates over the code, sending each relevant file for review.
 ///
 /// # Parameters
 ///
-/// * `settings` - A ['Settings'] that contains information for the LLM
+/// * `settings` - A [`Settings`] that contains information for the LLM
 pub async fn assess_codebase(
     settings: Settings,
 ) -> Result<RepositoryReview, Box<dyn std::error::Error>> {
@@ -36,17 +53,13 @@ pub async fn assess_codebase(
     let output_dir = PathBuf::from(&settings.report_output_path);
     let output_file_path =
         create_timestamped_filename(&output_dir, &settings.output_type, Local::now());
-
     // Collect the review data in the following data struct
     let mut review = RepositoryReview::new();
     match extract_directory_name(&settings.repository_path) {
         Ok(dir_name) => review.set_repository_name(dir_name.to_string()),
         Err(e) => error!("Error extracting directory name: {}", e),
     }
-
-    // Walk the repository structure sending relevant files to the provider ai service to review
     let repository_root = Path::new(&settings.repository_path);
-
     if !repository_root.is_dir() {
         return Err(Box::new(std::io::Error::new(
             std::io::ErrorKind::Other,
@@ -56,17 +69,14 @@ pub async fn assess_codebase(
             ),
         )));
     }
-
-    // First pass: get the repository file types and languages
-    // Review the repository and get the overall language file types to process
-    let repo_lfts: Vec<LanguageFileType> = analyse_languages_in_repository(repository_root);
-    debug!("REPOSITORY LANGUAGE FILE TYPES: {:?}", repo_lfts);
+    // First get the repository blacklist to avoid unneccessary file/folder traversal (should be largely derived from .gitignore)
     let blacklisted_dirs: Vec<String> = tools::get_blacklist_dirs(repository_root);
     debug!("BLACKLIST: {:?}", blacklisted_dirs);
 
     let mut overall_file_count: i32 = 0;
-    let mut file_types_count: HashMap<String, i32> = HashMap::new();
-    // Second pass: review code files
+    let (lc, mut breakdown, rules, docs) = initialize_language_analysis();
+
+    // Second review code files
     for entry in WalkDir::new(repository_root)
         .into_iter()
         .filter_entry(|e| is_not_blacklisted(e, &blacklisted_dirs))
@@ -74,47 +84,54 @@ pub async fn assess_codebase(
         .filter(|e| e.file_type().is_file())
     {
         let path = entry.path();
-        if path.is_file() {
-            // Check if the file extension is valid for review
-            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                if LanguageFileType::has_extension_of(ext, &repo_lfts) {
-                    // Check if the file is empty
-                    if let Ok(metadata) = fs::metadata(path) {
-                        if metadata.len() > 0 {
-                            if let Some(ext) = entry.path().extension().and_then(|e| e.to_str()) {
-                                let count = file_types_count.entry(ext.to_string()).or_insert(0);
-                                *count += 1;
-                            }
-                            // File is not empty, proceed with review
-                            debug!("Handling file: {}", path.display());
-                            overall_file_count += 1;
-                            let _code_from_file: String = fs::read_to_string(path)?;
-                            // Create a partial FileReview struct to hold the code (refactor)
 
-                            let response = review_file(&settings, path).await?;
-                            review.add_file_review(response);
-                        } else {
-                            // File is empty, skip
-                            debug!("Empty file skipped: {}", path.display());
-                        }
-                    }
-                } else {
-                    debug!(
-                        "Non-whitelisted file extension, skipped: {}",
-                        path.display()
-                    );
+        if let Some((language, file_size, loc, extension)) =
+            analyse_file_language(&entry, &lc, &rules, &docs)
+        {
+            overall_file_count += 1;
+
+            breakdown.add_usage(&language.name, &extension, file_size, loc);
+
+            #[cfg(debug_assertions)]
+            if let Some(max_count) = settings.max_file_count {
+                if overall_file_count >= max_count {
+                    continue;
+                }
+            }
+            match review_file(&settings, path).await {
+                Ok(Some(reviewed_file)) => {
+                    review.add_file_review(reviewed_file);
+                }
+                Ok(None) => {} // Handle cases where no review is needed
+                Err(e) => {
+                    return Err(e);
                 }
             }
         }
     }
-    // Complete the fields in the ['RepositoryReview'] struct
-    review.set_repository_type(settings.repository_type);
-    review.set_date(Utc::now());
-    review.set_repository_purpose("purpose".to_string()); // TODO: Derive this from playing the README at the LLM
-    review.set_summary("summary".to_string()); // TODO: Pull together all the filereview summaries and send to LLM for condensing
-    review.set_repository_rag_status(RAGStatus::Green); // TODO: Derive from summing up the RAG statuses in the filereviews and calculate...
+    // Complete the fields in the [`RepositoryReview`] struct
+    if let Some(language) =
+        LanguageFileType::get_predominant_language(&breakdown.to_language_file_types())
+    {
+        review.set_repository_type(language);
+    } else {
+        review.set_repository_type("UNKNOWN".to_string());
+    }
+    let now_utc: DateTime<Utc> = Utc::now();
+    let now_local = now_utc.with_timezone(&Local);
+    let review_date = now_local.format("%H:%M, %d/%m/%Y").to_string();
+    debug!("Review date: {}", review_date);
+
+    review.set_date(review_date);
+    review.set_repository_purpose("PURPOSE".to_string()); // TODO: Derive this from playing the README at the LLM
+    review.set_summary("SUMMARY".to_string()); // TODO: Pull together all the filereview summaries and send to LLM for condensing
+    review.set_repository_rag_status(get_overall_rag_for(&review));
+    review.set_num_files(overall_file_count);
+    review.set_sum_loc(LanguageFileType::sum_lines_of_code(
+        &breakdown.to_language_file_types(),
+    ));
     review.set_contributors(get_git_contributors(&settings.repository_path));
-    review.set_lfts(repo_lfts);
+    review.set_lfts(breakdown.to_language_file_types());
 
     // Serialize the review struct to JSON
     let review_json = serde_json::to_string_pretty(&review)
@@ -131,12 +148,43 @@ pub async fn assess_codebase(
     Ok(review)
 }
 
+/// gives an overall [`RAGStatus`]
+fn get_overall_rag_for(review: &RepositoryReview) -> RAGStatus {
+    let mut total_score = 0;
+
+    let num_file_reviews = review.get_file_reviews().len();
+    for file_review in review.get_file_reviews() {
+        let rag_weight = match file_review.get_file_rag_status() {
+            RAGStatus::Red => 3,
+            RAGStatus::Amber => 2,
+            RAGStatus::Green => 1,
+        };
+        let score = rag_weight
+            * (1 + file_review.get_errors().as_ref().map_or(0, |v| v.len())
+                + file_review
+                    .get_security_issues()
+                    .as_ref()
+                    .map_or(0, |v| v.len()));
+        total_score += score;
+    }
+    let average_score = total_score as f64 / num_file_reviews as f64;
+
+    if average_score > 2.5 {
+        RAGStatus::Red
+    } else if average_score > 1.5 {
+        RAGStatus::Amber
+    } else {
+        RAGStatus::Green
+    }
+}
+
 //
 #[derive(Debug, Deserialize, Default, PartialEq)]
 enum ReviewType {
     #[default]
     General,
     Security,
+    CodeStats,
 }
 /// We offer two types of review:
 /// 1. A full general review of the code
@@ -146,6 +194,7 @@ impl ReviewType {
         match settings.review_type {
             1 => ReviewType::General,
             2 => ReviewType::Security,
+            3 => ReviewType::CodeStats,
             _ => {
                 info!("Using default: {:?}", ReviewType::default());
                 ReviewType::default()
@@ -153,20 +202,20 @@ impl ReviewType {
         }
     }
 }
-/// Pulls the text from a ['File'] and sends it to the LLM for review
+/// Pulls the text from a [`File`] and sends it to the LLM for review
 ///
 /// This function takes two integer parameters and returns their sum.
 /// It demonstrates basic arithmetic operations in Rust.
 ///
 /// # Parameters
 ///
-/// * `Settings` - A ['Settings'] that contains information for the LLM
+/// * `Settings` - A [`Settings`] that contains information for the LLM
 /// * `path` - - The path the the file to process
 ///
 async fn review_file(
     settings: &Settings,
     path: &Path,
-) -> Result<FileReview, Box<dyn std::error::Error>> {
+) -> Result<Option<FileReview>, Box<dyn std::error::Error>> {
     info!("Handling output_file: {}", path.display());
     // Set up the right provider
     let provider: &crate::settings::ProviderSettings = settings.get_active_provider()
@@ -177,6 +226,10 @@ async fn review_file(
     let mut prompt_data = match review_type {
         ReviewType::General => PromptData::get_code_review_prompt(provider),
         ReviewType::Security => PromptData::get_security_review_prompt(provider),
+        ReviewType::CodeStats => {
+            info!("CODE STATISTICS ONLY. Only running code statistics, no review run.");
+            return Ok(None);
+        }
     };
 
     // TODO move this up and have this function expect a FileReview struct instead, which includes the code from the file
@@ -197,7 +250,7 @@ async fn review_file(
             pretty_print_json_for_debug(&stripped_json);
 
             match data::deserialize_file_review(&stripped_json) {
-                Ok(filereview_from_json) => Ok(filereview_from_json),
+                Ok(filereview_from_json) => Ok(Some(filereview_from_json)),
                 Err(e) => Err(format!("Failed to deserialize into FileReview: {}", e).into()),
             }
         }
