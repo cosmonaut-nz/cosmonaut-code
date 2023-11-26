@@ -7,7 +7,7 @@ mod tools;
 use crate::provider::api::ProviderCompletionResponse;
 use crate::provider::prompts::PromptData;
 use crate::provider::review_code_file;
-use crate::review::code::{analyse_file_language, initialize_language_analysis};
+use crate::review::code::{analyse_file_language, initialize_language_analysis, FileInfo};
 use crate::review::data::{FileReview, LanguageFileType, RAGStatus, RepositoryReview};
 use crate::review::tools::{get_git_contributors, is_not_blacklisted};
 use crate::settings::Settings;
@@ -16,12 +16,14 @@ use log::{debug, error, info};
 use regex::Regex;
 use serde::Deserialize;
 use std::error::Error;
+use std::ffi::OsStr;
 use std::fmt;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
-use walkdir::WalkDir;
+use std::sync::Arc;
+use walkdir::{DirEntry, WalkDir};
 
 // TODO: "security_issues": [
 //         {
@@ -41,11 +43,12 @@ use walkdir::WalkDir;
 //         }
 //       ],
 
-/// Takes the filepath to a repository and iterates over the code, sending each relevant file for review.
+/// Takes the filepath to a repository and iterates over the code, gaining stats, and sending each relevant file for review.
 ///
 /// # Parameters
 ///
 /// * `settings` - A [`Settings`] that contains information for the LLM
+///
 pub async fn assess_codebase(
     settings: Settings,
 ) -> Result<RepositoryReview, Box<dyn std::error::Error>> {
@@ -69,36 +72,69 @@ pub async fn assess_codebase(
             ),
         )));
     }
-    // First get the repository blacklist to avoid unneccessary file/folder traversal (should be largely derived from .gitignore)
+    // Get the repository blacklist to avoid unneccessary file/folder traversal (should be largely derived from .gitignore)
     let blacklisted_dirs: Vec<String> = tools::get_blacklist_dirs(repository_root);
     debug!("BLACKLIST: {:?}", blacklisted_dirs);
 
     let mut overall_file_count: i32 = 0;
     let (lc, mut breakdown, rules, docs) = initialize_language_analysis();
 
-    // Second review code files
+    // Fetch files from non-blacklisted dirs
     for entry in WalkDir::new(repository_root)
         .into_iter()
         .filter_entry(|e| is_not_blacklisted(e, &blacklisted_dirs))
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
     {
-        let path = entry.path();
-
-        if let Some((language, file_size, loc, extension)) =
-            analyse_file_language(&entry, &lc, &rules, &docs)
-        {
+        let result: Option<FileInfo> = get_file_info(&entry).and_then(|file_info| {
+            analyse_file_language(&file_info, &lc, &rules, &docs).map(
+                |(language, file_size, loc)| FileInfo {
+                    contents: file_info.contents,
+                    name: file_info.name,
+                    ext: file_info.ext,
+                    language: Some(language),
+                    file_size: Some(file_size),
+                    loc: Some(loc),
+                },
+            )
+        });
+        if let Some(file_info) = result {
             overall_file_count += 1;
-
-            breakdown.add_usage(&language.name, &extension, file_size, loc);
-
+            breakdown.add_usage(
+                &file_info.language.unwrap().name,
+                file_info.ext.to_str().unwrap_or_default(),
+                file_info.file_size.unwrap(),
+                file_info.loc.unwrap(),
+            );
             #[cfg(debug_assertions)]
             if let Some(max_count) = settings.max_file_count {
                 if overall_file_count >= max_count {
                     continue;
                 }
             }
-            match review_file(&settings, path).await {
+            let contents_str = match file_info.contents.to_str() {
+                Some(contents) => contents,
+                None => {
+                    error!("Contents of the code file are not valid UTF-8");
+                    continue;
+                }
+            };
+
+            let file_name_str = match file_info.name.to_str() {
+                Some(name) => name,
+                None => {
+                    error!("File name is not valid UTF-8");
+                    continue;
+                }
+            };
+
+            match review_file(
+                &settings,
+                &file_name_str.to_string(),
+                &contents_str.to_string(),
+            )
+            .await
+            {
                 Ok(Some(reviewed_file)) => {
                     review.add_file_review(reviewed_file);
                 }
@@ -146,6 +182,23 @@ pub async fn assess_codebase(
 
     info!("Total number of files processed: {}", overall_file_count);
     Ok(review)
+}
+
+/// gets the content, filename and extension of a [`walkdir::DirEntry`]
+fn get_file_info(entry: &DirEntry) -> Option<FileInfo> {
+    let path = entry.path();
+    let contents = fs::read_to_string(path).ok()?;
+    let name = path.file_name()?.to_os_string();
+    let ext = path.extension()?.to_os_string();
+
+    Some(FileInfo {
+        contents: Arc::new(OsStr::new(contents.as_str()).to_os_string()),
+        name: Arc::new(name),
+        ext: Arc::new(ext),
+        language: None,
+        file_size: None,
+        loc: None,
+    })
 }
 
 /// gives an overall [`RAGStatus`]
@@ -214,9 +267,10 @@ impl ReviewType {
 ///
 async fn review_file(
     settings: &Settings,
-    path: &Path,
+    code_file_path: &String,
+    code_file_contents: &String,
 ) -> Result<Option<FileReview>, Box<dyn std::error::Error>> {
-    info!("Handling output_file: {}", path.display());
+    info!("Handling output_file: {}", code_file_path);
     // Set up the right provider
     let provider: &crate::settings::ProviderSettings = settings.get_active_provider()
                                               .expect("Either a default or chosen provider should be configured in \'default.json\'. \
@@ -232,9 +286,7 @@ async fn review_file(
         }
     };
 
-    // TODO move this up and have this function expect a FileReview struct instead, which includes the code from the file
-    let code_from_file: String = fs::read_to_string(path)?;
-    let review_request: String = format!("File name: {}\n{}\n", path.display(), code_from_file);
+    let review_request: String = format!("File name: {}\n{}\n", code_file_path, code_file_contents);
     // Add the file as PromptData
     prompt_data.add_user_message_prompt(review_request);
     // debug!("Prompt data sent: {:?}", prompt_data);
