@@ -119,7 +119,6 @@ pub async fn assess_codebase(
                     continue;
                 }
             };
-
             let file_name_str = match file_info.name.to_str() {
                 Some(name) => name,
                 None => {
@@ -127,7 +126,6 @@ pub async fn assess_codebase(
                     continue;
                 }
             };
-
             match review_file(
                 &settings,
                 &file_name_str.to_string(),
@@ -271,11 +269,9 @@ async fn review_file(
     code_file_contents: &String,
 ) -> Result<Option<FileReview>, Box<dyn std::error::Error>> {
     info!("Handling output_file: {}", code_file_path);
-    // Set up the right provider
     let provider: &crate::settings::ProviderSettings = settings.get_active_provider()
                                               .expect("Either a default or chosen provider should be configured in \'default.json\'. \
                                               Either none was found, or the default provider did not match any name in the configured providers list.");
-    // Determine the review type and generate the appropriate prompt
     let review_type = ReviewType::from_config(settings);
     let mut prompt_data = match review_type {
         ReviewType::General => PromptData::get_code_review_prompt(provider),
@@ -291,15 +287,13 @@ async fn review_file(
     prompt_data.add_user_message_prompt(review_request);
     // debug!("Prompt data sent: {:?}", prompt_data);
 
-    // Pass the file to be reviewed by the LLM service
     let response: ProviderCompletionResponse =
         review_code_file(settings, provider, prompt_data).await?;
     let orig_response_json: String = response.choices[0].message.content.to_string();
-    // Strip any model markers from the reponse. LLM use markdown-style annotations for code, inc. "JSON"
     match strip_artifacts_from(&orig_response_json) {
         Ok(stripped_json) => {
-            #[cfg(debug_assertions)]
-            pretty_print_json_for_debug(&stripped_json);
+            // #[cfg(debug_assertions)]
+            // _pretty_print_json_for_debug(&stripped_json);
 
             match data::deserialize_file_review(&stripped_json) {
                 Ok(filereview_from_json) => Ok(Some(filereview_from_json)),
@@ -373,8 +367,6 @@ fn extract_directory_name(path_str: &str) -> Result<&str, PathError> {
 /// e.g., openai adds "\`\`\`json" at the beginning, and "\`\`\`" at the end of response to mark the type of content
 /// In others, spurious control characters are added that mangles the JSON for deserializing, e.g. characters in the range U+0000 to U+001F
 ///
-/// TODO: May be the cause of specific issues and subsequent JSON serialization problems. Need to review and track, right now can't reproduce
-///
 /// # Parameters
 ///
 /// * `json_str` - A str representation of the review_response
@@ -408,7 +400,7 @@ fn strip_artifacts_from(orig_json_str: &str) -> Result<String, &'static str> {
 
 /// A utility to check the JSON sent back from the LLM
 #[cfg(debug_assertions)]
-fn pretty_print_json_for_debug(json_str: &str) {
+fn _pretty_print_json_for_debug(json_str: &str) {
     match serde_json::from_str::<serde_json::Value>(json_str) {
         Ok(json_value) => {
             if let Ok(pretty_json) = serde_json::to_string_pretty(&json_value) {

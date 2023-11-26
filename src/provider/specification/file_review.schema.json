@@ -1,0 +1,160 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "FileReview",
+    "description": "A file review object that captures the elements of the review.",
+    "type": "object",
+    "properties": {
+        "filename": {
+            "type": "string",
+            "description": "The name of the file"
+        },
+        "summary": {
+            "type": "string",
+            "description": "A summary of the findings of the code review"
+        },
+        "file_rag_status": {
+            "type": "string",
+            "description": "In {Red, Amber, Green}. If no errors or security issues are found, and less than ten (10) improvements found, the file_rag_status should be 'Green'",
+            "enum": [
+                "Red",
+                "Amber",
+                "Green"
+            ]
+        },
+        "errors": {
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/error"
+            },
+            "description": "A list of syntatic or idiomatic errors found in the code giving the issue and potential resolution for each"
+        },
+        "improvements": {
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/improvement"
+            },
+            "description": "A list of code improvements, giving a suggestion and example for each"
+        },
+        "security_issues": {
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/securityIssue"
+            },
+            "description": "A list of security issues, giving the threat and mitigation for each"
+        },
+        "statistics": {
+            "$ref": "#/$defs/languageFileType",
+            "description": "A list of statistics (e.g., lines of code, etc.)"
+        }
+    },
+    "required": [
+        "filename",
+        "summary",
+        "file_rag_status"
+    ],
+    "$defs": {
+        "error": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "description": "Where in the code the error was found. Include line of code"
+                },
+                "issue": {
+                    "type": "string",
+                    "description": "A description of the error"
+                },
+                "resolution": {
+                    "type": "string",
+                    "description": "A description of how the error can be resolved the error"
+                }
+            },
+            "required": [
+                "code",
+                "issue",
+                "resolution"
+            ]
+        },
+        "improvement": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "description": "Where in the code the improvement can be made. Include line of code"
+                },
+                "suggestion": {
+                    "type": "string",
+                    "description": "A description of the suggested improvement to the code"
+                },
+                "example": {
+                    "type": "string",
+                    "description": "An example of how to make the improvement"
+                }
+            },
+            "required": [
+                "code",
+                "suggestion",
+                "example"
+            ]
+        },
+        "securityIssue": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "description": "Where in the code the issue was found. Include line of code"
+                },
+                "threat": {
+                    "type": "string",
+                    "description": "A description of the threat, including implications"
+                },
+                "mitigation": {
+                    "type": "string",
+                    "description": "A description of how the threat can be mitigated"
+                }
+            },
+            "required": [
+                "code",
+                "threat",
+                "mitigation"
+            ]
+        },
+        "languageFileType": {
+            "type": "object",
+            "properties": {
+                "language": {
+                    "type": "string",
+                    "description": "The language the code is in, e.g., 'Rust', 'C#', 'Java', etc."
+                },
+                "extension": {
+                    "type": "string",
+                    "description": "The file extension of the file, e.g., '.rs' or '.cs', etc."
+                },
+                "percentage": {
+                    "type": "number",
+                    "description": "A roll-up percentage of all LanguageFileTypes of this language. Leave as zero if not known"
+                },
+                "size": {
+                    "type": "integer",
+                    "description": "The size of the file, in bytes. Leave as zero if not known"
+                },
+                "loc": {
+                    "type": "integer",
+                    "description": "The number of lines of code found in the file. Excluding comments"
+                },
+                "total_size": {
+                    "type": "integer",
+                    "description": "A roll-up of all LanguageFileTypes size values, in bytes. Leave as zero if not known"
+                },
+                "file_count": {
+                    "type": "integer",
+                    "description": "A roll-up count of all LanguageFileTypes of this language"
+                }
+            },
+            "required": [
+                "language",
+                "extension"
+            ]
+        }
+    }
+}

@@ -26,6 +26,7 @@ pub enum ProviderMessageRole {
 // Outbound data structures - i.e. for requests to the provider LLM
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProviderCompletionMessage {
+    // pub id: String,
     pub role: ProviderMessageRole,
     pub content: String,
 }
@@ -79,12 +80,11 @@ impl ProviderMessageConverter for OpenAIMessageConverter {
             _ => MessageRole::user,
         };
 
-        // Create a ChatCompletionMessage with the converted role and the content
         ChatCompletionMessage {
             role,
             content: message.content.clone(),
-            name: None,          // Set to None or as required
-            function_call: None, // Set to None or as required
+            name: None,
+            function_call: None,
         }
     }
     fn convert_messages(
@@ -102,14 +102,20 @@ impl ProviderMessageConverter for OpenAIMessageConverter {
 
 // Response conversions
 pub trait ProviderResponseConverter {
-    fn convert_response(&self, response: &ChatCompletionResponse) -> ProviderCompletionResponse;
+    fn to_generic_provider_response(
+        &self,
+        response: &ChatCompletionResponse,
+    ) -> ProviderCompletionResponse;
 }
 
 /// OpenAI converter
 pub struct OpenAIResponseConverter;
 /// converts an openai_api_rs [`ChatCompletionResponse`] to a [`ProviderCompletionResponse`]
 impl ProviderResponseConverter for OpenAIResponseConverter {
-    fn convert_response(&self, response: &ChatCompletionResponse) -> ProviderCompletionResponse {
+    fn to_generic_provider_response(
+        &self,
+        response: &ChatCompletionResponse,
+    ) -> ProviderCompletionResponse {
         ProviderCompletionResponse {
             id: response.id.clone(),
             model: response.model.clone(),

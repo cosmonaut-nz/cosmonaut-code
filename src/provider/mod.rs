@@ -9,6 +9,7 @@ use crate::provider::api::{
 };
 use crate::provider::prompts::PromptData;
 use crate::settings::{ProviderSettings, Settings};
+use log::debug;
 use openai_api_rs::v1::api::Client;
 use openai_api_rs::v1::chat_completion::{self, ChatCompletionMessage, ChatCompletionRequest};
 
@@ -89,10 +90,8 @@ impl APIProvider for OpenAIProvider {
         let openai_converter: OpenAIMessageConverter = OpenAIMessageConverter;
         let completion_msgs: Vec<ChatCompletionMessage> =
             openai_converter.convert_messages(&prompt_data.messages);
-
         let req: ChatCompletionRequest =
             ChatCompletionRequest::new(self.model.to_string(), completion_msgs);
-
         let response: Result<
             chat_completion::ChatCompletionResponse,
             openai_api_rs::v1::error::APIError,
@@ -100,11 +99,10 @@ impl APIProvider for OpenAIProvider {
 
         match response {
             Ok(openai_res) => {
-                // debug!("Response status: {}", res.status());
+                debug!("ChatCompletionResponse ID: {}", openai_res.id);
                 // Now marshal the OpenAI specific result into the ProviderCompletionResponse
-                let converter: OpenAIResponseConverter = OpenAIResponseConverter;
                 let provider_completion_response: ProviderCompletionResponse =
-                    converter.convert_response(&openai_res);
+                    OpenAIResponseConverter.to_generic_provider_response(&openai_res);
                 Ok(provider_completion_response)
             }
             Err(openai_err) => Err(format!("OpenAI API request failed: {}", openai_err).into()),
