@@ -3,19 +3,18 @@
 use crate::review::data::LanguageFileType;
 use linguist::{
     container::InMemoryLanguageContainer,
-    resolver::{resolve_language, Language, Scope},
-    utils::{is_configuration, is_documentation, is_dotfile, is_vendor},
+    // error::LinguistError,
+    resolver::{resolve_language_from_content_str, Language, Scope},
+    // utils::{is_configuration, is_documentation, is_dotfile, is_vendor},
 };
 use log::error;
 use regex::RegexSet;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
-    fs::File,
-    io::{BufRead, BufReader},
-    path::Path,
+    ffi::{OsStr, OsString},
+    sync::Arc,
 };
-use walkdir::DirEntry;
 
 pub mod predefined {
     include!(concat!(env!("OUT_DIR"), "/languages.rs"));
@@ -66,25 +65,38 @@ pub fn initialize_language_analysis() -> (
     (lc, breakdown, rules, docs)
 }
 
+pub struct FileInfo {
+    pub contents: Arc<OsString>,
+    pub name: Arc<OsString>,
+    pub ext: Arc<OsString>,
+    pub language: Option<Language>,
+    pub file_size: Option<u64>,
+    pub loc: Option<i64>,
+}
+
 pub fn analyse_file_language(
-    entry: &DirEntry,
+    file_info: &FileInfo,
     lc: &InMemoryLanguageContainer,
-    rules: &RegexSet,
-    docs: &RegexSet,
-) -> Option<(Language, u64, i64, String)> {
-    let path = entry.path();
-    let relative_path = entry.path().strip_prefix(path).unwrap();
-    if is_vendor(entry.path(), rules)
-        || is_documentation(relative_path, docs)
-        || is_dotfile(relative_path)
-        || is_configuration(relative_path)
-    {
-        // TODO: handle if is_documentation: if so then work out frequency; higher the count the better for overall RAG
-        //          if no documentation then needs to be in repository summary and flagged as issue
-        //          - i.e. best practice is that documentation is versioned with code, new developers will find it more easily, etc.
-        return None;
-    }
-    let language: &Language = match resolve_language(path, lc) {
+    _rules: &RegexSet,
+    _docs: &RegexSet,
+) -> Option<(Language, u64, i64)> {
+    // TODO: resolve the type of file if docs, dotfile, or config
+    // if is_vendor(entry.path(), rules)
+    //     || is_documentation(relative_path, docs)
+    //     || is_dotfile(relative_path)
+    //     || is_configuration(relative_path)
+    // {
+    //     // TODO: handle if is_documentation: if so then work out frequency; higher the count the better for overall RAG
+    //     //          if no documentation then needs to be in repository summary and flagged as issue
+    //     //          - i.e. best practice is that documentation is versioned with code, new developers will find it more easily, etc.
+    //     return None;
+    // }
+    let language: &Language = match resolve_language_from_content_str(
+        file_info.contents.as_os_str(),
+        file_info.name.as_os_str(),
+        file_info.ext.as_os_str(),
+        lc,
+    ) {
         Ok(Some(lang)) => lang,
         _ => return None,
     };
@@ -93,46 +105,47 @@ pub fn analyse_file_language(
         return None;
     }
 
-    let file_size = match entry.metadata() {
-        Ok(metadata) => metadata.len(),
-        Err(_) => return None,
-    };
-    let loc: i64 = count_lines_of_code(path);
-    let extension = path
-        .extension()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .to_string();
-
-    Some((language.clone(), file_size, loc, extension))
-}
-
-// Function to count lines of code in a file
-fn count_lines_of_code(file_path: &Path) -> i64 {
-    let file = match File::open(file_path) {
-        Ok(file) => file,
+    let file_size = match get_file_contents_size(file_info.contents.as_os_str()) {
+        Ok(size) => size,
         Err(e) => {
-            error!("Failed to open file {}: {}", file_path.display(), e);
-            return 0;
+            error!("Error when determining file size: {}", e);
+            0
         }
     };
-    let reader = BufReader::new(file);
+    let loc: i64 = match count_lines_of_code(&file_info.contents) {
+        Ok(num_lines) => num_lines,
+        Err(e) => {
+            error!("Error when determining lines of code: {}", e);
+            0
+        }
+    };
 
+    Some((language.clone(), file_size, loc))
+}
+
+fn get_file_contents_size(file_contents: impl AsRef<OsStr>) -> Result<u64, &'static str> {
+    let content_str = file_contents
+        .as_ref()
+        .to_str()
+        .ok_or("Invalid UTF-8 content")?;
+    let length: u64 = content_str
+        .len()
+        .try_into()
+        .map_err(|_| "Length conversion error")?;
+    Ok(length)
+}
+
+/// Function to count lines of code in a file, skipping comments
+fn count_lines_of_code(file_content: impl AsRef<OsString>) -> Result<i64, &'static str> {
+    let content_str = file_content
+        .as_ref()
+        .to_str()
+        .ok_or("Invalid UTF-8 content")?;
     let mut is_comment_block = false;
     let mut functional_lines = 0;
 
-    for line in reader.lines() {
-        let line = match line {
-            Ok(line) => line,
-            Err(e) => {
-                // Optionally log the error and continue to the next line
-                error!("Error reading line in {}: {}", file_path.display(), e);
-                continue;
-            }
-        };
+    for line in content_str.lines() {
         let line = line.trim();
-
-        // Check for block comment start or end
         if line.starts_with("/*") {
             is_comment_block = true;
         }
@@ -140,8 +153,6 @@ fn count_lines_of_code(file_path: &Path) -> i64 {
             is_comment_block = false;
             continue;
         }
-
-        // Skip the line if it's a comment
         if COMMENT_PREFIXES
             .iter()
             .any(|&prefix| line.starts_with(prefix))
@@ -149,11 +160,10 @@ fn count_lines_of_code(file_path: &Path) -> i64 {
         {
             continue;
         }
-
         functional_lines += 1;
     }
 
-    functional_lines
+    Ok(functional_lines)
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
