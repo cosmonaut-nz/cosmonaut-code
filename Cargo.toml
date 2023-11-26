@@ -30,13 +30,11 @@ regex = "1.10.2"
 async-trait = "0.1.74"
 git2 = "0.18.1"
 # linguist-rs = "1.1.0" # Using direct repository fetch in place of crates.io as version is out of date (local code changes)
-# linguist-rs = { git = "https://github.com/cosmonaut-nz/linguist-rs.git" }
-linguist-rs = { path = "/Users/avastmick/repos/linguist-rs/linguist" }
+linguist-rs = { git = "https://github.com/cosmonaut-nz/linguist-rs.git" }
 
 
 [dev-dependencies]
 tempfile = "3.8.1"
 
 [build-dependencies]
-# linguist-rs-build = { git = "https://github.com/cosmonaut-nz/linguist-rs.git" }
-linguist-rs-build = { path = "/Users/avastmick/repos/linguist-rs/linguist-build" }
+linguist-rs-build = { git = "https://github.com/cosmonaut-nz/linguist-rs.git" }
