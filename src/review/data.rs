@@ -109,7 +109,8 @@ pub struct FileReview {
     pub improvements: Option<Vec<Improvement>>, // A list of improvements, giving a suggestion and example for each
     #[serde(skip_serializing_if = "Option::is_none")]
     pub security_issues: Option<Vec<SecurityIssue>>, // A list of security issues, giving the threat and mitigation for each
-    pub statistics: String, // A list of statistics (e.g., lines of code, functions, methods, etc.)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub statistics: Option<LanguageFileType>, // A list of statistics (e.g., lines of code, functions, methods, etc.)
 }
 
 impl FileReview {
@@ -237,8 +238,7 @@ mod tests {
                             "example": "Implement a function to load the timeout from an environment variable or a configuration file."
                         }
                     ],
-                    "security_issues": [],
-                    "statistics": "Lines of code: 6, Constants: 1, Imports: 1, Comments: 2"
+                    "security_issues": []
             }"#;
 
         let improvement = Improvement {
@@ -254,7 +254,7 @@ mod tests {
             errors: Some(vec![]),
             improvements: Some(vec![improvement]),
             security_issues: Some(vec![]),
-            statistics: "Lines of code: 6, Constants: 1, Imports: 1, Comments: 2".to_string(),
+            statistics: None,
         };
         match deserialize_file_review(str_json) {
             Ok(filereview_from_json) => assert_eq!(expected_filereview, filereview_from_json),

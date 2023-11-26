@@ -1,5 +1,6 @@
-//! builds the pre-requisite definitions for the usage of the GitHub Linguist data
 //!
+//!  
+//! builds the pre-requisite definitions for the usage of the GitHub Linguist data
 //!
 use linguist_build::{
     Definition, Kind, Location, GITHUB_LINGUIST_DOCUMENTATION_URL, GITHUB_LINGUIST_HEURISTICS_URL,

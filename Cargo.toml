@@ -37,4 +37,4 @@ linguist-rs = { git = "https://github.com/cosmonaut-nz/linguist-rs.git" }
 tempfile = "3.8.1"
 
 [build-dependencies]
-linguist-rs-build = { git = "https://github.com/cosmonaut-nz/linguist-rs.git" }
+linguist-rs-build = { git = "https://github.com/cosmonaut-nz/linguist-rs.git" } 
