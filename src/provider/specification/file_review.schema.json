@@ -12,15 +12,6 @@
             "type": "string",
             "description": "A summary of the findings of the code review"
         },
-        "file_rag_status": {
-            "type": "string",
-            "description": "In {Red, Amber, Green}. If 0 errors and 0 security issues are found, and less than 10 improvements are found, then file_rag_status = 'Green'",
-            "enum": [
-                "Red",
-                "Amber",
-                "Green"
-            ]
-        },
         "errors": {
             "type": "array",
             "items": {
@@ -45,6 +36,15 @@
         "statistics": {
             "$ref": "#/$defs/languageFileType",
             "description": "A list of statistics (e.g., lines of code, etc.)"
+        },
+        "file_rag_status": {
+            "type": "string",
+            "description": "In {Red, Amber, Green}. If errors.len() == 0 && security_issues.len ==0() && improvements.len() <=10 then file_rag_status = 'Green'",
+            "enum": [
+                "Red",
+                "Amber",
+                "Green"
+            ]
         }
     },
     "required": [

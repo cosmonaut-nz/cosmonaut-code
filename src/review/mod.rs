@@ -41,9 +41,11 @@ pub(crate) async fn assess_codebase(
     // Collect the review data in the following data struct
     let mut review = RepositoryReview::new();
     match extract_directory_name(&settings.repository_path) {
-        Ok(dir_name) => review.set_repository_name(dir_name.to_string()),
-        Err(e) => error!("Error extracting directory name: {}", e),
-    }
+        Ok(dir_name) => review.repository_name(dir_name.to_string()),
+        Err(e) => {
+            return Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e)));
+        }
+    };
     let repository_root = Path::new(&settings.repository_path);
     if !repository_root.is_dir() {
         return Err(Box::new(std::io::Error::new(
@@ -125,34 +127,34 @@ pub(crate) async fn assess_codebase(
             }
         }
     }
-    // Complete the fields in the [`RepositoryReview`] struct
-    if let Some(language) =
-        LanguageFileType::get_predominant_language(&breakdown.to_language_file_types())
-    {
-        review.set_repository_type(language);
-    } else {
-        review.set_repository_type("UNKNOWN".to_string());
-    }
     let now_utc: DateTime<Utc> = Utc::now();
     let now_local = now_utc.with_timezone(&Local);
     let review_date = now_local.format("%H:%M, %d/%m/%Y").to_string();
     debug!("Review date: {}", review_date);
 
-    review.set_date(review_date);
-    review.set_repository_purpose("PURPOSE".to_string()); // TODO: Derive this from playing the README at the LLM
-    review.set_summary("SUMMARY".to_string()); // TODO: Pull together all the filereview summaries and send to LLM for condensing
-    review.set_repository_rag_status(get_overall_rag_for(&review));
-    review.set_num_files(overall_file_count);
-    review.set_sum_loc(LanguageFileType::sum_lines_of_code(
+    // Complete the fields in the [`RepositoryReview`] struct
+    if let Some(language) =
+        LanguageFileType::get_predominant_language(&breakdown.to_language_file_types())
+    {
+        review.repository_type(Some(language));
+    } else {
+        review.repository_type(Some("UNKNOWN".to_string()));
+    }
+    review.date(review_date);
+    review.repository_purpose("PURPOSE".to_string()); // TODO: Derive this from playing the README at the LLM
+    review.summary("SUMMARY".to_string()); // TODO: Pull together all the filereview summaries and send to LLM for condensing
+    review.repository_rag_status(get_overall_rag_for(&review));
+    review.sum_num_files(Some(overall_file_count));
+    review.sum_loc(Some(LanguageFileType::sum_lines_of_code(
         &breakdown.to_language_file_types(),
-    ));
-    review.set_contributors(get_git_contributors(&settings.repository_path));
-    review.set_lfts(breakdown.to_language_file_types());
+    )));
+    review.contributors(get_git_contributors(&settings.repository_path));
+    review.language_file_types(breakdown.to_language_file_types());
     let provider = get_provider(&settings);
-    review.set_generative_ai_service_and_model(format!(
+    review.generative_ai_service_and_model(Some(format!(
         "Provider: {}, service: {}, model: {}",
         provider.name, provider.service, provider.model
-    ));
+    )));
 
     // Serialize the review struct to JSON
     let review_json = serde_json::to_string_pretty(&review)
@@ -187,11 +189,12 @@ fn get_file_info(entry: &DirEntry) -> Option<FileInfo> {
 }
 
 /// gives an overall [`RAGStatus`] for the passed [`RepositoryReview`]
+// TODO: This does not work in current form. Weighting may be wrong, but needs review and fix
 fn get_overall_rag_for(review: &RepositoryReview) -> RAGStatus {
     let mut total_score = 0;
 
-    let num_file_reviews = review.get_file_reviews().len();
-    for file_review in review.get_file_reviews() {
+    let num_file_reviews = review.file_reviews.len();
+    for file_review in &review.file_reviews {
         let rag_weight = match file_review.get_file_rag_status() {
             RAGStatus::Red => 3,
             RAGStatus::Amber => 2,

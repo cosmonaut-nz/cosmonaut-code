@@ -11,6 +11,7 @@ use crate::provider::prompts::PromptData;
 use crate::settings::{ProviderSettings, Settings};
 use openai_api_rs::v1::api::Client;
 use openai_api_rs::v1::chat_completion::{ChatCompletionMessage, ChatCompletionRequest};
+use serde_json::json;
 
 // Add similar structs and implementations for other providers.
 
@@ -82,10 +83,11 @@ impl APIProvider for OpenAIProvider {
             "from provider::OpenAIProvider::code_review for openai_api_rs::v1::api::Client::new",
             |key| {
                 let client: Client = Client::new(key.to_string());
+                let res_format = json!({ "type": "json_object" });
                 let completion_msgs: Vec<ChatCompletionMessage> =
                     OpenAIMessageConverter.convert_messages(&prompt_data.messages);
                 let req: ChatCompletionRequest =
-                    ChatCompletionRequest::new(self.model.to_string(), completion_msgs);
+                    ChatCompletionRequest::new(self.model.to_string(), completion_msgs).response_format(res_format);
                 async move {
                     match client.chat_completion(req) {
                         Ok(openai_res) => {
