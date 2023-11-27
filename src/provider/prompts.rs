@@ -12,7 +12,8 @@ use serde::{Deserialize, Serialize};
 const FILE_REVIEW_SCHEMA: &str = include_str!("../provider/specification/file_review.schema.json");
 const JSON_HANDLING_ADVICE: &str = r#"Provide your analysis in valid JSON format. 
                                     Strictly escape any characters within your response strings that will create invalid JSON, such as \" - i.e., double quotes. 
-                                    Never use comments in the JSON. Ensure that your output exactly complies to the following JSON Schema."#;
+                                    Never use comments in your JSON. Ensure that your output exactly complies to the following JSON Schema 
+                                    and you follow the instructions provided in "description" fields."#;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub(crate) struct PromptData {

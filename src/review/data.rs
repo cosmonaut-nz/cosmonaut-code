@@ -4,6 +4,8 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::impl_builder_methods;
+
 #[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
 pub(crate) enum RAGStatus {
     #[default]
@@ -26,9 +28,8 @@ pub(crate) struct RepositoryReview {
     sum_num_files: Option<i32>, // Total number of files
     contributors: Vec<Contributor>, // List of contributors to the codebase from commit history
     language_file_types: Vec<LanguageFileType>, // The languages (as a %) found in the repository (a la GitHub)
-    pub(crate) filereviews: Vec<FileReview>,    // Each of the code files
+    pub(crate) file_reviews: Vec<FileReview>,   // Each of the code files
 }
-// TODO move over to impl_builder_methods!
 impl RepositoryReview {
     pub(crate) fn new() -> Self {
         RepositoryReview {
@@ -43,50 +44,12 @@ impl RepositoryReview {
             sum_num_files: None,
             contributors: Vec::new(),
             language_file_types: Vec::new(),
-            filereviews: Vec::new(),
+            file_reviews: Vec::new(),
         }
     }
-    pub(crate) fn get_file_reviews(&self) -> &Vec<FileReview> {
-        &self.filereviews
-    }
-    pub(crate) fn set_repository_name(&mut self, name: String) {
-        self.repository_name = name;
-    }
-    pub(crate) fn set_repository_type(&mut self, _type: String) {
-        self.repository_type = Some(_type);
-    }
-    pub(crate) fn set_date(&mut self, date: String) {
-        self.date = date;
-    }
-    pub(crate) fn set_repository_purpose(&mut self, purpose: String) {
-        self.repository_purpose = purpose;
-    }
-    pub(crate) fn set_summary(&mut self, summary: String) {
-        self.summary = summary;
-    }
-    pub(crate) fn set_repository_rag_status(&mut self, status: RAGStatus) {
-        self.repository_rag_status = status;
-    }
-    pub(crate) fn set_sum_loc(&mut self, loc: i64) {
-        self.sum_loc = Some(loc);
-    }
-    pub(crate) fn set_num_files(&mut self, num: i32) {
-        self.sum_num_files = Some(num);
-    }
-    pub(crate) fn set_contributors(&mut self, contributors: Vec<Contributor>) {
-        self.contributors = contributors;
-    }
-    pub(crate) fn set_lfts(&mut self, language_file_types: Vec<LanguageFileType>) {
-        self.language_file_types = language_file_types;
-    }
-    pub(crate) fn set_generative_ai_service_and_model(
-        &mut self,
-        generative_ai_service_and_model: String,
-    ) {
-        self.generative_ai_service_and_model = Some(generative_ai_service_and_model);
-    }
+    /// pushes a [`FileReview`] into the filereviews [`Vec`]
     pub(crate) fn add_file_review(&mut self, file_review: FileReview) {
-        self.filereviews.push(file_review);
+        self.file_reviews.push(file_review);
     }
 }
 impl Default for RepositoryReview {
@@ -94,6 +57,21 @@ impl Default for RepositoryReview {
         Self::new()
     }
 }
+
+impl_builder_methods!(
+    RepositoryReview,
+    repository_name: String,
+    generative_ai_service_and_model: Option<String>,
+    repository_type: Option<String>,
+    date: String,
+    repository_purpose: String,
+    summary: String,
+    repository_rag_status: RAGStatus,
+    sum_loc: Option<i64>,
+    sum_num_files: Option<i32>,
+    contributors: Vec<Contributor>,
+    language_file_types: Vec<LanguageFileType>
+);
 /// Captures the LLM review of the specified file.
 ///
 /// This struct will contain the fields passed back as JSON from the LLM.
