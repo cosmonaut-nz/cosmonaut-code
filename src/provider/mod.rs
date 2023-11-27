@@ -1,17 +1,16 @@
 //!
 //!  Handles the access to the LLM with utility functions for specified actions
 //!
-pub mod api;
-pub mod prompts;
+pub(crate) mod api;
+pub(crate) mod prompts;
 use crate::provider::api::{
     OpenAIMessageConverter, OpenAIResponseConverter, ProviderCompletionResponse,
     ProviderMessageConverter, ProviderResponseConverter,
 };
 use crate::provider::prompts::PromptData;
 use crate::settings::{ProviderSettings, Settings};
-use log::debug;
 use openai_api_rs::v1::api::Client;
-use openai_api_rs::v1::chat_completion::{self, ChatCompletionMessage, ChatCompletionRequest};
+use openai_api_rs::v1::chat_completion::{ChatCompletionMessage, ChatCompletionRequest};
 
 // Add similar structs and implementations for other providers.
 
@@ -79,33 +78,25 @@ impl APIProvider for OpenAIProvider {
         settings: &Settings,
         prompt_data: PromptData,
     ) -> Result<ProviderCompletionResponse, Box<dyn std::error::Error>> {
-        // TODO: set a timeout on the client to handle poor network or server issues
-        let client = Client::new(
-            settings.sensitive.api_key
-                .get("from provider::OpenAIProvider::code_review for openai_api_rs::v1::api::Client::new")
-                .to_string(),
-        );
-
-        // Marshal the PrompData.message into the (openai_api_rs) ChatCompletionMessage per provider
-        let openai_converter: OpenAIMessageConverter = OpenAIMessageConverter;
-        let completion_msgs: Vec<ChatCompletionMessage> =
-            openai_converter.convert_messages(&prompt_data.messages);
-        let req: ChatCompletionRequest =
-            ChatCompletionRequest::new(self.model.to_string(), completion_msgs);
-        let response: Result<
-            chat_completion::ChatCompletionResponse,
-            openai_api_rs::v1::error::APIError,
-        > = client.chat_completion(req);
-
-        match response {
-            Ok(openai_res) => {
-                debug!("ChatCompletionResponse ID: {}", openai_res.id);
-                // Now marshal the OpenAI specific result into the ProviderCompletionResponse
-                let provider_completion_response: ProviderCompletionResponse =
-                    OpenAIResponseConverter.to_generic_provider_response(&openai_res);
-                Ok(provider_completion_response)
+        settings.sensitive.api_key.use_key(
+            "from provider::OpenAIProvider::code_review for openai_api_rs::v1::api::Client::new",
+            |key| {
+                let client: Client = Client::new(key.to_string());
+                let completion_msgs: Vec<ChatCompletionMessage> =
+                    OpenAIMessageConverter.convert_messages(&prompt_data.messages);
+                let req: ChatCompletionRequest =
+                    ChatCompletionRequest::new(self.model.to_string(), completion_msgs);
+                async move {
+                    match client.chat_completion(req) {
+                        Ok(openai_res) => {
+                            let provider_completion_response: ProviderCompletionResponse =
+                                OpenAIResponseConverter.to_generic_provider_response(&openai_res);
+                            Ok(provider_completion_response)
+                        }
+                        Err(openai_err) => Err(format!("OpenAI API request failed: {}", openai_err).into()),
+                    }
+                }
             }
-            Err(openai_err) => Err(format!("OpenAI API request failed: {}", openai_err).into()),
-        }
+        ).await
     }
 }

@@ -12,6 +12,10 @@ A tool to review and assess the quality, security and maintainability of a codeb
 categories = ["ai", "code"]
 keywords = ["ai", "helper", "code-review", "assessment"]
 
+[[bin]]
+name = "cosmonaut_code"
+path = "src/main.rs"
+
 [dependencies]
 openai-api-rs = "2.1.0"
 thiserror = "1.0.50"

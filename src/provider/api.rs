@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 // Data structures that can be outbound (requests) or inbound (responses)
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum ProviderMessageRole {
+pub(crate) enum ProviderMessageRole {
     User,
     System,
     Assistant,
@@ -25,35 +25,35 @@ pub enum ProviderMessageRole {
 
 // Outbound data structures - i.e. for requests to the provider LLM
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ProviderCompletionMessage {
-    // pub id: String,
-    pub role: ProviderMessageRole,
-    pub content: String,
+pub(crate) struct ProviderCompletionMessage {
+    // pub(crate) id: String,
+    pub(crate) role: ProviderMessageRole,
+    pub(crate) content: String,
 }
 
 // Inbound data structures - i.e. for reponses from the provider LLM
 #[derive(Debug, Deserialize, Serialize)]
-pub struct ProviderCompletionResponse {
-    pub id: String,
-    pub model: String,
-    pub choices: Vec<ProviderResponseChoice>,
+pub(crate) struct ProviderCompletionResponse {
+    pub(crate) id: String,
+    pub(crate) model: String,
+    pub(crate) choices: Vec<ProviderResponseChoice>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct ProviderResponseChoice {
-    pub message: ProviderResponseMessage,
+pub(crate) struct ProviderResponseChoice {
+    pub(crate) message: ProviderResponseMessage,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct ProviderResponseMessage {
-    pub content: String,
+pub(crate) struct ProviderResponseMessage {
+    pub(crate) content: String,
 }
 
 // Provider specific data structure conversion - i.e. create an openai ['ChatCompletionMessage'] from an generic ['ProviderCompletionMessage']
 
 // Request conversions
 /// Converts a [`ProviderCompletionMessage`] struct into a [`ProviderSpecificMessage`]
-pub trait ProviderMessageConverter {
+pub(crate) trait ProviderMessageConverter {
     type ProviderOutputMessage;
 
     fn convert_message(&self, message: &ProviderCompletionMessage) -> Self::ProviderOutputMessage;
@@ -64,7 +64,7 @@ pub trait ProviderMessageConverter {
 }
 
 /// An OpenAI converter
-pub struct OpenAIMessageConverter;
+pub(crate) struct OpenAIMessageConverter;
 
 impl ProviderMessageConverter for OpenAIMessageConverter {
     type ProviderOutputMessage = ChatCompletionMessage;
@@ -101,7 +101,7 @@ impl ProviderMessageConverter for OpenAIMessageConverter {
 // here
 
 // Response conversions
-pub trait ProviderResponseConverter {
+pub(crate) trait ProviderResponseConverter {
     fn to_generic_provider_response(
         &self,
         response: &ChatCompletionResponse,
@@ -109,7 +109,7 @@ pub trait ProviderResponseConverter {
 }
 
 /// OpenAI converter
-pub struct OpenAIResponseConverter;
+pub(crate) struct OpenAIResponseConverter;
 /// converts an openai_api_rs [`ChatCompletionResponse`] to a [`ProviderCompletionResponse`]
 impl ProviderResponseConverter for OpenAIResponseConverter {
     fn to_generic_provider_response(

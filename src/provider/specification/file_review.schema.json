@@ -14,7 +14,7 @@
         },
         "file_rag_status": {
             "type": "string",
-            "description": "In {Red, Amber, Green}. If no errors or security issues are found, and less than ten (10) improvements found, the file_rag_status should be 'Green'",
+            "description": "In {Red, Amber, Green}. If 0 errors and 0 security issues are found, and less than 10 improvements are found, then file_rag_status = 'Green'",
             "enum": [
                 "Red",
                 "Amber",
@@ -40,7 +40,7 @@
             "items": {
                 "$ref": "#/$defs/securityIssue"
             },
-            "description": "A list of security issues, giving the threat and mitigation for each"
+            "description": "A list of security issues, threats or vulnerabilities, such as OWASP, etc. Give the threat (and reference, such as OWASP, etc.) and mitigation for each"
         },
         "statistics": {
             "$ref": "#/$defs/languageFileType",
@@ -140,7 +140,7 @@
                 },
                 "loc": {
                     "type": "integer",
-                    "description": "The number of lines of code found in the file. Excluding comments"
+                    "description": "The number of lines of code found in the file. Excluding comment lines or blocks"
                 },
                 "total_size": {
                     "type": "integer",

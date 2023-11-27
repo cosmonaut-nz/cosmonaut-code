@@ -7,19 +7,22 @@
 use crate::provider::api::{ProviderCompletionMessage, ProviderMessageRole};
 use crate::settings::ProviderSettings;
 use log::debug;
-// TODO: assess how well these prompts are engineered and evaluate the need to alter prompts between providers for the optimal outcome for each.
 use serde::{Deserialize, Serialize};
 
 const FILE_REVIEW_SCHEMA: &str = include_str!("../provider/specification/file_review.schema.json");
+const JSON_HANDLING_ADVICE: &str = r#"Provide your analysis in valid JSON format. 
+                                    Strictly escape any characters within your response strings that will create invalid JSON, such as \" - i.e., double quotes. 
+                                    Never use comments in the JSON. Ensure that your output exactly complies to the following JSON Schema."#;
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct PromptData {
-    pub id: Option<String>,
-    pub messages: Vec<ProviderCompletionMessage>,
+pub(crate) struct PromptData {
+    pub(crate) id: Option<String>,
+    pub(crate) messages: Vec<ProviderCompletionMessage>,
 }
+
 impl PromptData {
     /// Adds a user Message to the Vec of Messages
-    pub fn add_user_message_prompt(&mut self, content: String) {
+    pub(crate) fn add_user_message_prompt(&mut self, content: String) {
         let user_message = ProviderCompletionMessage {
             role: ProviderMessageRole::User,
             content,
@@ -27,7 +30,7 @@ impl PromptData {
         self.messages.push(user_message);
     }
     /// Gets a specific prompt for a given provider
-    pub fn get_code_review_prompt(for_provider: &ProviderSettings) -> Self {
+    pub(crate) fn get_code_review_prompt(for_provider: &ProviderSettings) -> Self {
         debug!("Provider: {}", for_provider);
         Self {
             id: None,
@@ -44,8 +47,7 @@ impl PromptData {
                 },
                 ProviderCompletionMessage {
                     role: ProviderMessageRole::System,
-                    content: r#"Provide your analysis in a valid JSON format, in which any invalid characters are correctly escaped, please use the following JSON Schema.
-                            "#.to_string(),
+                    content: JSON_HANDLING_ADVICE.to_string(),
                 },
                 ProviderCompletionMessage {
                     role: ProviderMessageRole::System,
@@ -54,7 +56,7 @@ impl PromptData {
             ],
         }
     }
-    pub fn get_security_review_prompt(for_provider: &ProviderSettings) -> Self {
+    pub(crate) fn get_security_review_prompt(for_provider: &ProviderSettings) -> Self {
         debug!("Provider: {}", for_provider);
         Self {
             id: None,
@@ -72,8 +74,7 @@ impl PromptData {
                 },
                 ProviderCompletionMessage {
                     role: ProviderMessageRole::System,
-                    content: r#"Provide your analysis in a valid JSON format, in which any invalid characters are correctly escaped, please use the following JSON Schema.
-                            "#.to_string(),
+                    content: JSON_HANDLING_ADVICE.to_string(),
                 },
                 ProviderCompletionMessage {
                     role: ProviderMessageRole::System,

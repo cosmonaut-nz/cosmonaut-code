@@ -10,7 +10,7 @@ use std::path::Path;
 use walkdir::DirEntry;
 
 /// Checks whether the dir passed in is on the blacklist, e.g., '.git'
-pub fn is_not_blacklisted(entry: &DirEntry, blacklist: &[String]) -> bool {
+pub(crate) fn is_not_blacklisted(entry: &DirEntry, blacklist: &[String]) -> bool {
     // Not in the blacklist
     !entry
         .file_name()
@@ -20,7 +20,7 @@ pub fn is_not_blacklisted(entry: &DirEntry, blacklist: &[String]) -> bool {
 }
 
 /// Gets the the blacklist from either defaults or dynamically from '.gitignore'
-pub fn get_blacklist_dirs(repo_path: &Path) -> Vec<String> {
+pub(crate) fn get_blacklist_dirs(repo_path: &Path) -> Vec<String> {
     let mut blacklist = vec![String::from(".git")];
 
     // Path to the `.gitignore` file
@@ -57,7 +57,7 @@ fn handle_character_class_pattern(blacklist: &mut Vec<String>, line: &str) {
 
 /// Gets the contributors from the repository passed as the 'repo_path'
 ///
-pub fn get_git_contributors(repo_path: &str) -> Vec<Contributor> {
+pub(crate) fn get_git_contributors(repo_path: &str) -> Vec<Contributor> {
     let repo = Repository::open(repo_path).expect("Failed to open repository");
     let mut revwalk = repo.revwalk().expect("Failed to get revwalk");
     revwalk.push_head().expect("Failed to push head");
