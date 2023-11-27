@@ -292,8 +292,8 @@ async fn review_file(
     let orig_response_json: String = response.choices[0].message.content.to_string();
     match strip_artifacts_from(&orig_response_json) {
         Ok(stripped_json) => {
-            // #[cfg(debug_assertions)]
-            // _pretty_print_json_for_debug(&stripped_json);
+            #[cfg(debug_assertions)]
+            _pretty_print_json_for_debug(&stripped_json);
 
             match data::deserialize_file_review(&stripped_json) {
                 Ok(filereview_from_json) => Ok(Some(filereview_from_json)),
