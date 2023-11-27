@@ -6,7 +6,7 @@ macro_rules! impl_builder_methods {
     ($builder:ident, $($field:ident: $field_type:ty),*) => {
         impl $builder {
             $(
-                pub fn $field(mut self, $field: $field_type) -> Self {
+                pub(crate) fn $field(mut self, $field: $field_type) -> Self {
                     self.$field = $field;
                     self
                 }
@@ -17,7 +17,7 @@ macro_rules! impl_builder_methods {
     (opt, $builder:ident, $($field:ident: $field_type:ty),*) => {
         impl $builder {
             $(
-                pub fn $field(mut self, $field: $field_type) -> Self {
+                pub(crate) fn $field(mut self, $field: $field_type) -> Self {
                     self.$field = Some($field);
                     self
                 }

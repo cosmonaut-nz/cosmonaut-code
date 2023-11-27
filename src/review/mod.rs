@@ -1,7 +1,7 @@
 //! Handles the file in a software repository.
 //! Iterates over the folder structure, ignoring files or folders that are not relevant.
 //! Passes each relevant (code) file for review.
-pub mod code;
+pub(crate) mod code;
 mod data;
 mod tools;
 use crate::provider::api::ProviderCompletionResponse;
@@ -25,31 +25,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use walkdir::{DirEntry, WalkDir};
 
-// TODO: "security_issues": [
-//         {
-//           "code": "fn assess_codebase",
-//           "threat": "Improper error handling may lead to information disclosure if stack traces or internal details are exposed to the user.",
-//           "mitigation": "Implement proper error handling and avoid exposing internal details."
-//         },
-//         {
-//           "code": "fn review_file",
-//           "threat": "Injection of control characters could lead to JSON parsing vulnerabilities.",
-//           "mitigation": "Ensure rigorous input sanitization and validation."
-//         },
-//         {
-//           "code": "regex::Regex::new(r\"[\\x00-\\x1F]\")",
-//           "threat": "Misuse of regular expressions could introduce performance issues (ReDoS) or crashes due to faulty patterns.",
-//           "mitigation": "Carefully craft regular expressions and consider using precompiled ones."
-//         }
-//       ],
-
 /// Takes the filepath to a repository and iterates over the code, gaining stats, and sending each relevant file for review.
 ///
 /// # Parameters
 ///
 /// * `settings` - A [`Settings`] that contains information for the LLM
 ///
-pub async fn assess_codebase(
+pub(crate) async fn assess_codebase(
     settings: Settings,
 ) -> Result<RepositoryReview, Box<dyn std::error::Error>> {
     // Used for the final report to write to disk
@@ -166,6 +148,11 @@ pub async fn assess_codebase(
     ));
     review.set_contributors(get_git_contributors(&settings.repository_path));
     review.set_lfts(breakdown.to_language_file_types());
+    let provider = get_provider(&settings);
+    review.set_generative_ai_service_and_model(format!(
+        "Provider: {}, service: {}, model: {}",
+        provider.name, provider.service, provider.model
+    ));
 
     // Serialize the review struct to JSON
     let review_json = serde_json::to_string_pretty(&review)
@@ -199,7 +186,7 @@ fn get_file_info(entry: &DirEntry) -> Option<FileInfo> {
     })
 }
 
-/// gives an overall [`RAGStatus`]
+/// gives an overall [`RAGStatus`] for the passed [`RepositoryReview`]
 fn get_overall_rag_for(review: &RepositoryReview) -> RAGStatus {
     let mut total_score = 0;
 
@@ -241,7 +228,7 @@ enum ReviewType {
 /// 1. A full general review of the code
 /// 2. A review focussed on security only
 impl ReviewType {
-    pub fn from_config(settings: &Settings) -> Self {
+    pub(crate) fn from_config(settings: &Settings) -> Self {
         match settings.review_type {
             1 => ReviewType::General,
             2 => ReviewType::Security,
@@ -269,9 +256,7 @@ async fn review_file(
     code_file_contents: &String,
 ) -> Result<Option<FileReview>, Box<dyn std::error::Error>> {
     info!("Handling output_file: {}", code_file_path);
-    let provider: &crate::settings::ProviderSettings = settings.get_active_provider()
-                                              .expect("Either a default or chosen provider should be configured in \'default.json\'. \
-                                              Either none was found, or the default provider did not match any name in the configured providers list.");
+    let provider = get_provider(settings);
     let review_type = ReviewType::from_config(settings);
     let mut prompt_data = match review_type {
         ReviewType::General => PromptData::get_code_review_prompt(provider),
@@ -281,27 +266,37 @@ async fn review_file(
             return Ok(None);
         }
     };
-
     let review_request: String = format!("File name: {}\n{}\n", code_file_path, code_file_contents);
-    // Add the file as PromptData
     prompt_data.add_user_message_prompt(review_request);
-    // debug!("Prompt data sent: {:?}", prompt_data);
 
     let response: ProviderCompletionResponse =
         review_code_file(settings, provider, prompt_data).await?;
     let orig_response_json: String = response.choices[0].message.content.to_string();
     match strip_artifacts_from(&orig_response_json) {
-        Ok(stripped_json) => {
-            #[cfg(debug_assertions)]
-            _pretty_print_json_for_debug(&stripped_json);
-
-            match data::deserialize_file_review(&stripped_json) {
-                Ok(filereview_from_json) => Ok(Some(filereview_from_json)),
-                Err(e) => Err(format!("Failed to deserialize into FileReview: {}", e).into()),
+        Ok(stripped_json) => match data::deserialize_file_review(&stripped_json) {
+            Ok(filereview_from_json) => Ok(Some(filereview_from_json)),
+            Err(e) => {
+                debug!(
+                    "ORIGINAL RESPONSE JSON FROM PROVIDER: {}",
+                    orig_response_json
+                );
+                error!(
+                    "Failed to deserialize: {:?} \nPossibly due to invalid escape character",
+                    &stripped_json
+                );
+                Err(format!("Failed to deserialize into FileReview: {}", e).into())
             }
-        }
+        },
         Err(e) => Err(format!("Error stripping JSON markers: {}", e).into()),
     }
+}
+
+// Gets the currently active provider. If there is a misconfiguration (mangled default.json) then panics
+fn get_provider(settings: &Settings) -> &crate::settings::ProviderSettings {
+    let provider: &crate::settings::ProviderSettings = settings.get_active_provider()
+                                              .expect("Either a default or chosen provider should be configured in \'default.json\'. \
+                                              Either none was found, or the default provider did not match any name in the configured providers list.");
+    provider
 }
 
 /// Creates a timestamped file

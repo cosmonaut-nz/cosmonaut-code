@@ -16,7 +16,7 @@ use std::{
     sync::Arc,
 };
 
-pub mod predefined {
+pub(crate) mod predefined {
     include!(concat!(env!("OUT_DIR"), "/languages.rs"));
     include!(concat!(env!("OUT_DIR"), "/heuristics.rs"));
     include!(concat!(env!("OUT_DIR"), "/vendors.rs"));
@@ -39,7 +39,7 @@ const COMMENT_PREFIXES: &[&str] = &["//", "///", "//!", "#", "\"\"\" "];
 //       ],
 
 // Initialize language container and return necessary objects
-pub fn initialize_language_analysis() -> (
+pub(crate) fn initialize_language_analysis() -> (
     InMemoryLanguageContainer,
     LanguageBreakdown,
     RegexSet,
@@ -65,16 +65,16 @@ pub fn initialize_language_analysis() -> (
     (lc, breakdown, rules, docs)
 }
 
-pub struct FileInfo {
-    pub contents: Arc<OsString>,
-    pub name: Arc<OsString>,
-    pub ext: Arc<OsString>,
-    pub language: Option<Language>,
-    pub file_size: Option<u64>,
-    pub loc: Option<i64>,
+pub(crate) struct FileInfo {
+    pub(crate) contents: Arc<OsString>,
+    pub(crate) name: Arc<OsString>,
+    pub(crate) ext: Arc<OsString>,
+    pub(crate) language: Option<Language>,
+    pub(crate) file_size: Option<u64>,
+    pub(crate) loc: Option<i64>,
 }
 
-pub fn analyse_file_language(
+pub(crate) fn analyse_file_language(
     file_info: &FileInfo,
     lc: &InMemoryLanguageContainer,
     _rules: &RegexSet,
@@ -167,13 +167,13 @@ fn count_lines_of_code(file_content: impl AsRef<OsString>) -> Result<i64, &'stat
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
-pub struct LanguageBreakdown {
-    pub usages: HashMap<String, HashMap<String, (u64, i32, i64)>>, // size, count, loc
-    pub total_size: u64,
+pub(crate) struct LanguageBreakdown {
+    pub(crate) usages: HashMap<String, HashMap<String, (u64, i32, i64)>>, // size, count, loc
+    pub(crate) total_size: u64,
 }
 
 impl LanguageBreakdown {
-    pub fn add_usage(&mut self, lang: &str, ext: &str, size: u64, loc: i64) {
+    pub(crate) fn add_usage(&mut self, lang: &str, ext: &str, size: u64, loc: i64) {
         let language_entry = self.usages.entry(lang.to_string()).or_default();
         let entry = language_entry.entry(ext.to_string()).or_insert((0, 0, 0));
         entry.0 += size; // Increase size
@@ -181,7 +181,7 @@ impl LanguageBreakdown {
         entry.2 += loc; // Increment LOC
         self.total_size += size;
     }
-    pub fn to_language_file_types(&self) -> Vec<LanguageFileType> {
+    pub(crate) fn to_language_file_types(&self) -> Vec<LanguageFileType> {
         let mut types = Vec::new();
 
         for (language, extensions) in &self.usages {

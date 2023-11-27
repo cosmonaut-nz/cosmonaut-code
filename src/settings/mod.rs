@@ -17,40 +17,42 @@ const SETTINGS_FILE_PATH: &str = "settings"; // TODO: determine the right path w
 /// struct to hold the configuration
 ///
 #[derive(Serialize, Deserialize, PartialEq)]
-pub struct Settings {
+pub(crate) struct Settings {
     // General configuration fields
-    pub providers: Vec<ProviderSettings>,
+    pub(crate) providers: Vec<ProviderSettings>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub chosen_provider: Option<String>,
-    pub default_provider: String,
-    pub output_type: String,
-    pub review_type: i32,
-    pub repository_path: String,
-    pub report_output_path: String,
+    pub(crate) chosen_provider: Option<String>,
+    pub(crate) default_provider: String,
+    pub(crate) output_type: String,
+    pub(crate) review_type: i32,
+    pub(crate) repository_path: String,
+    pub(crate) report_output_path: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_file_count: Option<i32>,
+    pub(crate) max_file_count: Option<i32>,
 
     // Sensitive data
-    pub sensitive: SensitiveSettings,
+    pub(crate) sensitive: SensitiveSettings,
 }
 
 #[derive(Serialize, Deserialize, PartialEq)]
-pub struct ProviderSettings {
-    pub name: String,
-    pub service: String,
-    pub model: String,
-    pub api_url: String,
-    pub api_timeout: u64,
-    pub max_tokens: i64,
+pub(crate) struct ProviderSettings {
+    pub(crate) name: String,
+    pub(crate) service: String,
+    pub(crate) model: String,
+    pub(crate) api_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) api_timeout: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) max_tokens: Option<i64>,
 }
 #[derive(Serialize, Deserialize, PartialEq)]
-pub struct SensitiveSettings {
-    pub api_key: APIKey,
-    pub org_id: String,
-    pub org_name: String,
+pub(crate) struct SensitiveSettings {
+    pub(crate) api_key: APIKey,
+    pub(crate) org_id: String,
+    pub(crate) org_name: String,
 }
 #[derive(Serialize, Deserialize, PartialEq)]
-pub struct APIKey(String); // Sensitive data
+pub(crate) struct APIKey(String); // Sensitive data
 
 /// Custom Debug implementation for Settings
 impl fmt::Debug for Settings {
@@ -99,7 +101,7 @@ impl fmt::Display for Settings {
 ///
 /// `review_type` and `output_type` have default values, but other fields must be explicitly set.
 impl Settings {
-    pub fn new() -> Result<Self, ConfigError> {
+    pub(crate) fn new() -> Result<Self, ConfigError> {
         // Determine run mode based on build profile
         let default_run_mode = if cfg!(debug_assertions) {
             // Default to 'development' if in debug mode
@@ -127,7 +129,7 @@ impl Settings {
     }
 
     /// Function gets either the chosen provider or default provider, or gives a ProviderError
-    pub fn get_active_provider(&self) -> Result<&ProviderSettings, ProviderError> {
+    pub(crate) fn get_active_provider(&self) -> Result<&ProviderSettings, ProviderError> {
         let provider_name = self
             .chosen_provider
             .as_ref()
@@ -165,7 +167,7 @@ impl fmt::Display for ProviderSettings {
     }
 }
 #[derive(Debug)]
-pub enum ProviderError {
+pub(crate) enum ProviderError {
     NotFound(String),
 }
 /// Custom error for misconfiguration of provider
@@ -190,21 +192,19 @@ impl fmt::Display for SensitiveSettings {
 }
 /// Locking up the APIKey to prevent accidental display
 /// Note: `fn new(key: String) -> Self` is used by Settings::new, however the compiler moans, so added dead_code allowance
-/// TODO: Suggested: Replace the direct accessor with a closure-based accessor that accepts a function to operate on the key, without ever returning the value directly.
+///
 impl APIKey {
-    #[allow(dead_code)]
-    pub fn new(key: String) -> Self {
-        APIKey(key)
-    }
-
-    // Function to access the sensitive data when absolutely necessary
-    pub fn get(&self, access_context: &str) -> &str {
+    pub(crate) fn use_key<T, F>(&self, access_context: &str, f: F) -> T
+    where
+        F: FnOnce(&str) -> T,
+    {
         let timestamp = SystemTime::now();
         warn!(
             "APIKey accessed at {:?} in context '{}'.",
             timestamp, access_context
         );
-        &self.0
+
+        f(&self.0)
     }
 }
 /// Custom Debug implementation for APIKey to prevent accidental printing of secret
