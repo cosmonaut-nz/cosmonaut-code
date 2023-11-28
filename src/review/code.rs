@@ -3,9 +3,7 @@
 use crate::review::data::LanguageFileType;
 use linguist::{
     container::InMemoryLanguageContainer,
-    // error::LinguistError,
     resolver::{resolve_language_from_content_str, Language, Scope},
-    // utils::{is_configuration, is_documentation, is_dotfile, is_vendor},
 };
 use log::error;
 use regex::RegexSet;

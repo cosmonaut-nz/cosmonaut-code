@@ -12,7 +12,7 @@ use crate::review::data::{FileReview, LanguageFileType, RAGStatus, RepositoryRev
 use crate::review::tools::{get_git_contributors, is_not_blacklisted};
 use crate::settings::Settings;
 use chrono::{DateTime, Local, Utc};
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use regex::Regex;
 use serde::Deserialize;
 use std::error::Error;
@@ -20,8 +20,7 @@ use std::ffi::OsStr;
 use std::fmt;
 use std::fs;
 use std::io::Write;
-use std::path::Path;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use walkdir::{DirEntry, WalkDir};
 
@@ -35,30 +34,21 @@ pub(crate) async fn assess_codebase(
     settings: Settings,
 ) -> Result<RepositoryReview, Box<dyn std::error::Error>> {
     // Used for the final report to write to disk
-    let output_dir = PathBuf::from(&settings.report_output_path);
-    let output_file_path =
+    let output_dir: PathBuf = PathBuf::from(&settings.report_output_path);
+    let output_file_path: PathBuf =
         create_timestamped_filename(&output_dir, &settings.output_type, Local::now());
     // Collect the review data in the following data struct
-    let mut review = RepositoryReview::new();
-    match extract_directory_name(&settings.repository_path) {
+    let mut review: RepositoryReview = RepositoryReview::new();
+
+    match extract_repository_name(&settings.repository_path) {
         Ok(dir_name) => review.repository_name(dir_name.to_string()),
-        Err(e) => {
-            return Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e)));
-        }
+        Err(e) => return Err(Box::new(e)),
     };
-    let repository_root = Path::new(&settings.repository_path);
-    if !repository_root.is_dir() {
-        return Err(Box::new(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!(
-                "Provided path is not a directory: {}",
-                &settings.repository_path
-            ),
-        )));
-    }
-    // Get the repository blacklist to avoid unneccessary file/folder traversal (should be largely derived from .gitignore)
+    let repository_root = match validate_repository(Path::new(&settings.repository_path)) {
+        Ok(path) => path,
+        Err(e) => return Err(Box::new(e)),
+    };
     let blacklisted_dirs: Vec<String> = tools::get_blacklist_dirs(repository_root);
-    debug!("BLACKLIST: {:?}", blacklisted_dirs);
 
     let mut overall_file_count: i32 = 0;
     let (lc, mut breakdown, rules, docs) = initialize_language_analysis();
@@ -90,23 +80,30 @@ pub(crate) async fn assess_codebase(
                 file_info.file_size.unwrap(),
                 file_info.loc.unwrap(),
             );
+            // To improve development feedback loop time on big repos, allows sampling
             #[cfg(debug_assertions)]
             if let Some(max_count) = settings.max_file_count {
-                if overall_file_count >= max_count {
+                if overall_file_count > max_count {
                     continue;
                 }
             }
             let contents_str = match file_info.contents.to_str() {
                 Some(contents) => contents,
                 None => {
-                    error!("Contents of the code file are not valid UTF-8");
+                    error!(
+                        "Contents of the code file, {:?}, are not valid UTF-8, skipping.",
+                        entry.file_name()
+                    );
                     continue;
                 }
             };
             let file_name_str = match file_info.name.to_str() {
                 Some(name) => name,
                 None => {
-                    error!("File name is not valid UTF-8");
+                    error!(
+                        "File name, {:?}, is not valid UTF-8, skipping.",
+                        entry.file_name()
+                    );
                     continue;
                 }
             };
@@ -120,7 +117,9 @@ pub(crate) async fn assess_codebase(
                 Ok(Some(reviewed_file)) => {
                     review.add_file_review(reviewed_file);
                 }
-                Ok(None) => {} // Handle cases where no review is needed
+                Ok(None) => {
+                    warn!("No review actioned. None returned from 'review_file'")
+                }
                 Err(e) => {
                     return Err(e);
                 }
@@ -130,7 +129,6 @@ pub(crate) async fn assess_codebase(
     let now_utc: DateTime<Utc> = Utc::now();
     let now_local = now_utc.with_timezone(&Local);
     let review_date = now_local.format("%H:%M, %d/%m/%Y").to_string();
-    debug!("Review date: {}", review_date);
 
     // Complete the fields in the [`RepositoryReview`] struct
     if let Some(language) =
@@ -167,8 +165,30 @@ pub(crate) async fn assess_codebase(
         .write_all(review_json.as_bytes())
         .map_err(|e| format!("Error writing to output file: {}", e))?;
 
-    info!("Total number of files processed: {}", overall_file_count);
+    info!("TOTAL NUMBER OF FILES PROCESSED: {}", overall_file_count);
     Ok(review)
+}
+
+/// validates the provided [`Path`] as being a directory that holds a '.git' subdirectory - i.e. is a valid git repository
+fn validate_repository(repository_root: &Path) -> Result<&Path, PathError> {
+    if !repository_root.is_dir() {
+        return Err(PathError {
+            message: format!(
+                "Provided path is not a directory: {}",
+                repository_root.display()
+            ),
+        });
+    }
+    if !repository_root.join(".git").is_dir() {
+        return Err(PathError {
+            message: format!(
+                "Provided path is not a valid Git repository: {}",
+                repository_root.display()
+            ),
+        });
+    }
+
+    Ok(repository_root)
 }
 
 /// gets the content, filename and extension of a [`walkdir::DirEntry`]
@@ -251,7 +271,7 @@ impl ReviewType {
 /// # Parameters
 ///
 /// * `Settings` - A [`Settings`] that contains information for the LLM
-/// * `path` - - The path the the file to process
+/// * `path` - The path the the file to process
 ///
 async fn review_file(
     settings: &Settings,
@@ -341,7 +361,7 @@ impl fmt::Display for PathError {
 }
 impl Error for PathError {}
 
-fn extract_directory_name(path_str: &str) -> Result<&str, PathError> {
+fn extract_repository_name(path_str: &str) -> Result<&str, PathError> {
     let path = Path::new(path_str);
 
     // Check if the path points to a file (has an extension)
@@ -475,24 +495,24 @@ mod tests {
     #[test]
     fn test_normal_directory_path() {
         let path_str = "/location/dirname/cosmonaut-code";
-        assert_eq!(extract_directory_name(path_str).unwrap(), "cosmonaut-code");
+        assert_eq!(extract_repository_name(path_str).unwrap(), "cosmonaut-code");
     }
 
     #[test]
     fn test_empty_path() {
         let path_str = "";
-        assert!(extract_directory_name(path_str).is_err());
+        assert!(extract_repository_name(path_str).is_err());
     }
 
     #[test]
     fn test_path_ending_with_slash() {
         let path_str = "/location/dirname/cosmonaut-code/";
-        assert_eq!(extract_directory_name(path_str).unwrap(), "cosmonaut-code");
+        assert_eq!(extract_repository_name(path_str).unwrap(), "cosmonaut-code");
     }
 
     #[test]
     fn test_single_name_directory() {
         let path_str = "cosmonaut-code";
-        assert_eq!(extract_directory_name(path_str).unwrap(), "cosmonaut-code");
+        assert_eq!(extract_repository_name(path_str).unwrap(), "cosmonaut-code");
     }
 }

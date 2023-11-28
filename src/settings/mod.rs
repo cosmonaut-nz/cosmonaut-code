@@ -5,14 +5,18 @@
 //!     Repository directory/folder location
 //!
 //!
+use config::FileFormat;
 use config::{Config, ConfigError, File};
-use log::{info, warn};
+use inquire::formatter::StringFormatter;
+use inquire::Text;
+use log::warn;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fmt;
 use std::time::SystemTime;
 
-const SETTINGS_FILE_PATH: &str = "settings"; // TODO: determine the right path when packaged
+const DEFAULT_CONFIG: &str = include_str!("../../settings/default.json");
+pub(crate) const ENV_SENSITIVE_SETTINGS_PATH: &str = "SENSITIVE_SETTINGS_PATH";
 
 /// struct to hold the configuration
 ///
@@ -29,8 +33,6 @@ pub(crate) struct Settings {
     pub(crate) report_output_path: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) max_file_count: Option<i32>,
-
-    // Sensitive data
     pub(crate) sensitive: SensitiveSettings,
 }
 
@@ -48,11 +50,13 @@ pub(crate) struct ProviderSettings {
 #[derive(Serialize, Deserialize, PartialEq)]
 pub(crate) struct SensitiveSettings {
     pub(crate) api_key: APIKey,
-    pub(crate) org_id: String,
-    pub(crate) org_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) org_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) org_name: Option<String>,
 }
 #[derive(Serialize, Deserialize, PartialEq)]
-pub(crate) struct APIKey(String); // Sensitive data
+pub(crate) struct APIKey(String); // Sensitive data!
 
 /// Custom Debug implementation for Settings
 impl fmt::Debug for Settings {
@@ -89,6 +93,11 @@ impl fmt::Display for Settings {
 /// This struct contains various settings used to configure
 /// the behavior of the code review and analysis process.
 ///
+/// The Settings are loaded via a [`Config`]::builder() from iterative sources:
+///     1. From the 'DEFAULT_CONFIG' that is loaded at compile time
+///     2. From an evironment variable, "SENSITIVE_SETTINGS_PATH" that points to a `json` file, and not present, then
+///     3. From user commandline input for the required configuration and sensitive data such as 'api_key'
+///
 /// # Fields
 /// - `providers`: The set of organizations providing the language model service (e.g., openai, google, anthropic, meta, etc.).
 /// - `default_provider`: Default is openai.
@@ -102,30 +111,49 @@ impl fmt::Display for Settings {
 /// `review_type` and `output_type` have default values, but other fields must be explicitly set.
 impl Settings {
     pub(crate) fn new() -> Result<Self, ConfigError> {
-        // Determine run mode based on build profile
-        let default_run_mode = if cfg!(debug_assertions) {
-            // Default to 'development' if in debug mode
-            warn!("RUN_MODE not set, defaulting to 'development' (debug build)");
-            "development"
-        } else {
-            // default is production
-            info!("RUN_MODE not set, defaulting to 'production' (release build)");
-            "production"
-        };
-        let run_mode = env::var("RUN_MODE").unwrap_or_else(|_| default_run_mode.into());
+        let local_settings_path: Option<String> = env::var(ENV_SENSITIVE_SETTINGS_PATH).ok();
+        let config_builder: config::ConfigBuilder<config::builder::DefaultState> =
+            Config::builder().add_source(File::from_str(DEFAULT_CONFIG, FileFormat::Json));
 
-        //Load the config,
-        let config = Config::builder()
-            // Start off by merging in the "default" configuration file
-            .add_source(File::with_name(&format!("{}/default", SETTINGS_FILE_PATH)).required(false))
-            // Default to (optional) 'development' env
-            .add_source(
-                File::with_name(&format!("{}/{}", SETTINGS_FILE_PATH, run_mode)).required(false),
-            )
-            .build()?;
+        let config_builder: config::ConfigBuilder<config::builder::DefaultState> =
+                // try to get sensitive configuration data can be sourced as an env variable
+            if let Some(path) = local_settings_path {
+                config_builder.add_source(
+                    File::with_name(&path)
+                        .required(false)
+                        .format(FileFormat::Json),
+                )
+            } else { // TODO: when wired into UI this will need to be handled via UI, can likely remove
+                let formatter: StringFormatter = &|s| {
+                    let mut c = s.chars();
+                    match c.next() {
+                        None => String::from("No key given"),
+                        Some(_f) => {
+                            String::from("")
+                            + "*".repeat(s.len() - 1).as_str()
+                        }
+                    }
+                };
+                // Prompt user for settings via commandline
+                let repository_path = Text::new("Enter the path to a valid git repository").prompt();
+                let report_path = Text::new("Enter the path to where you'd like the report").prompt();
+                // TODO Drop down for configured providers
+                let provider_name = Text::new("Enter the provider you'd like to use").prompt();
+                let api_key = Text::new("Enter your provider API key").with_formatter(formatter).prompt();
 
-        // Deserialize and return the configuration
-        config.try_deserialize()
+                // Build a config object with user-provided settings
+                config_builder
+                    .set_default(
+                        "repository_path",
+                        repository_path.unwrap(),
+                    )?
+                    .set_default("report_output_path", report_path.unwrap())?
+                    .set_default("chosen_provider", provider_name.unwrap())?
+                    .set_default("sensitive.api_key", api_key.unwrap())?
+            };
+        let config = config_builder.build()?;
+
+        config.try_deserialize::<Settings>()
     }
 
     /// Function gets either the chosen provider or default provider, or gives a ProviderError
@@ -192,7 +220,6 @@ impl fmt::Display for SensitiveSettings {
 }
 /// Locking up the APIKey to prevent accidental display
 /// Note: `fn new(key: String) -> Self` is used by Settings::new, however the compiler moans, so added dead_code allowance
-///
 impl APIKey {
     pub(crate) fn use_key<T, F>(&self, access_context: &str, f: F) -> T
     where

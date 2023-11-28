@@ -49,7 +49,6 @@ fn create_api_provider(
         "openai" => Ok(Box::new(OpenAIProvider {
             model: provider_settings.model.clone(),
         })),
-        // Throw an error
         _ => Err(Box::new(std::io::Error::new(
             std::io::ErrorKind::Other,
             format!("Unsupported provider: {}", provider_settings.name),
