@@ -53,10 +53,10 @@ pub(crate) async fn assess_codebase(
     let mut overall_file_count: i32 = 0;
     let (lc, mut breakdown, rules, docs) = initialize_language_analysis();
 
-    // Fetch files from non-blacklisted dirs
+    // Fetch files from non-blacklisted dirs (that are not symlinks)
     for entry in WalkDir::new(repository_root)
         .into_iter()
-        .filter_entry(|e| is_not_blacklisted(e, &blacklisted_dirs))
+        .filter_entry(|e| is_not_blacklisted(e, &blacklisted_dirs) && !e.file_type().is_symlink())
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
     {

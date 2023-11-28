@@ -246,3 +246,116 @@ impl fmt::Display for APIKey {
         write!(f, "*** sensitive data hidden ***")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::File;
+    use std::io::Write;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_provider_settings_serialization() {
+        let provider = ProviderSettings {
+            name: "OpenAI".to_string(),
+            service: "GPT-3".to_string(),
+            model: "text-davinci-003".to_string(),
+            api_url: "https://api.openai.com".to_string(),
+            api_timeout: Some(60),
+            max_tokens: Some(2048),
+        };
+
+        let serialized = serde_json::to_string(&provider).unwrap();
+        assert!(serialized.contains("OpenAI"));
+    }
+
+    #[test]
+    fn test_provider_settings_deserialization() {
+        let json = r#"{
+            "name": "OpenAI",
+            "service": "GPT-3",
+            "model": "text-davinci-003",
+            "api_url": "https://api.openai.com",
+            "api_timeout": 60,
+            "max_tokens": 2048
+        }"#;
+
+        let provider: ProviderSettings = serde_json::from_str(json).unwrap();
+        assert_eq!(provider.name, "OpenAI");
+    }
+
+    #[test]
+    fn test_api_key_use() {
+        let api_key = APIKey("secret".to_string());
+        let result = api_key.use_key("test", |key| key.to_uppercase());
+
+        assert_eq!(result, "SECRET");
+    }
+
+    #[test]
+    fn test_settings_new_with_env() {
+        // Create a temporary directory
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("settings.json");
+
+        // Write settings data to a temporary file
+        let mut file = File::create(&file_path).unwrap();
+        writeln!(
+            file,
+            r#"{{
+                "default_provider": "TestProvider",
+                "output_type": "JSON",
+                "review_type": 1,
+                "repository_path": "test/repo/path",
+                "report_output_path": "test/report/path",
+                "sensitive": {{
+                    "api_key": "testkey"
+                }}
+            }}"#
+        )
+        .unwrap();
+
+        std::env::set_var(ENV_SENSITIVE_SETTINGS_PATH, file_path.to_str().unwrap());
+
+        let settings = Settings::new().unwrap();
+
+        assert_eq!(settings.default_provider, "TestProvider");
+        assert_eq!(settings.output_type, "JSON");
+        assert_eq!(settings.review_type, 1);
+        assert_eq!(settings.repository_path, "test/repo/path");
+        assert_eq!(settings.report_output_path, "test/report/path");
+        assert_eq!(settings.sensitive.api_key.0, "testkey");
+
+        dir.close().unwrap();
+
+        std::env::remove_var(ENV_SENSITIVE_SETTINGS_PATH);
+    }
+
+    #[test]
+    fn test_get_active_provider() {
+        let settings = Settings {
+            providers: vec![ProviderSettings {
+                name: "OpenAI".to_string(),
+                service: "GPT-3".to_string(),
+                model: "text-davinci-003".to_string(),
+                api_url: "https://api.openai.com".to_string(),
+                api_timeout: Some(60),
+                max_tokens: Some(2048),
+            }],
+            chosen_provider: None,
+            default_provider: "OpenAI".to_string(),
+            output_type: "JSON".to_string(),
+            review_type: 1,
+            repository_path: "path/to/repo".to_string(),
+            report_output_path: "path/to/report".to_string(),
+            max_file_count: None,
+            sensitive: SensitiveSettings {
+                api_key: APIKey("secret".to_string()),
+                org_id: None,
+                org_name: None,
+            },
+        };
+        let provider = settings.get_active_provider().unwrap();
+        assert_eq!(provider.name, "OpenAI");
+    }
+}

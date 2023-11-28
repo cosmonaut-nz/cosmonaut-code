@@ -1,21 +1,16 @@
-//! Provides a suite of structs, traits and functions to marshall provider-specific API needs
-//!
+//! This module provides a set of structures and traits to facilitate the interaction
+//! with various language model providers like OpenAI, Google, etc. It includes data
+//! structures for sending requests and receiving responses, and also converters to
+//! translate between generic and provider-specific formats.
+
 use openai_api_rs::v1::chat_completion::{
     ChatCompletionChoice, ChatCompletionMessage, ChatCompletionMessageForResponse,
     ChatCompletionResponse, MessageRole,
 };
 use serde::{Deserialize, Serialize};
 
-// TODO: This module needs a retrospective refactor once more than one provider is wired in.
-//          Right now the generalisation is based on the OpenAI and Claud 2 API structures (which are very similar)
-//          Things to do:
-//             - naming conventions are a messy and need a review for readability and usage.
-//                  The usage should be: [Provider]+data structure, e.g., openai_api_rs::v1::chat_completion::ChatCompletionMessage would be generalised as ProviderCompletionMessage
-//             - fields in structs may not fully encapsulate need as the LLM usage is more finly tuned
-
-// Data structures that can be outbound (requests) or inbound (responses)
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
+// Enum to represent the role of a message in a conversation.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub(crate) enum ProviderMessageRole {
     User,
     System,
@@ -23,15 +18,14 @@ pub(crate) enum ProviderMessageRole {
     Function,
 }
 
-// Outbound data structures - i.e. for requests to the provider LLM
+// Struct for messages sent to the language model provider.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub(crate) struct ProviderCompletionMessage {
-    // pub(crate) id: String,
     pub(crate) role: ProviderMessageRole,
     pub(crate) content: String,
 }
 
-// Inbound data structures - i.e. for reponses from the provider LLM
+// Struct for responses received from the language model provider.
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct ProviderCompletionResponse {
     pub(crate) id: String,
@@ -49,10 +43,7 @@ pub(crate) struct ProviderResponseMessage {
     pub(crate) content: String,
 }
 
-// Provider specific data structure conversion - i.e. create an openai ['ChatCompletionMessage'] from an generic ['ProviderCompletionMessage']
-
-// Request conversions
-/// Converts a [`ProviderCompletionMessage`] struct into a [`ProviderSpecificMessage`]
+// Trait to convert generic messages to provider-specific messages.
 pub(crate) trait ProviderMessageConverter {
     type ProviderOutputMessage;
 
@@ -63,21 +54,18 @@ pub(crate) trait ProviderMessageConverter {
     ) -> Vec<Self::ProviderOutputMessage>;
 }
 
-/// An OpenAI converter
+// Implementation of ProviderMessageConverter for OpenAI.
 pub(crate) struct OpenAIMessageConverter;
 
 impl ProviderMessageConverter for OpenAIMessageConverter {
     type ProviderOutputMessage = ChatCompletionMessage;
 
     fn convert_message(&self, message: &ProviderCompletionMessage) -> Self::ProviderOutputMessage {
-        let provider_message_role: Option<ProviderMessageRole> = Some(message.role.clone());
-
-        let role: MessageRole = match provider_message_role {
-            Some(ProviderMessageRole::User) => MessageRole::user,
-            Some(ProviderMessageRole::System) => MessageRole::system,
-            Some(ProviderMessageRole::Assistant) => MessageRole::assistant,
-            Some(ProviderMessageRole::Function) => MessageRole::function,
-            _ => MessageRole::user,
+        let role: MessageRole = match message.role {
+            ProviderMessageRole::User => MessageRole::user,
+            ProviderMessageRole::System => MessageRole::system,
+            ProviderMessageRole::Assistant => MessageRole::assistant,
+            ProviderMessageRole::Function => MessageRole::function,
         };
 
         ChatCompletionMessage {
@@ -87,6 +75,7 @@ impl ProviderMessageConverter for OpenAIMessageConverter {
             function_call: None,
         }
     }
+
     fn convert_messages(
         &self,
         messages: &[ProviderCompletionMessage],
@@ -97,10 +86,10 @@ impl ProviderMessageConverter for OpenAIMessageConverter {
             .collect()
     }
 }
-// Similarly, create converters for Google, Anthropic, Meta, etc.
-// here
 
-// Response conversions
+// Similarly, create converters for Google, Anthropic, Meta, etc. here
+
+// Trait for converting provider-specific responses to generic format.
 pub(crate) trait ProviderResponseConverter {
     fn to_generic_provider_response(
         &self,
@@ -108,9 +97,9 @@ pub(crate) trait ProviderResponseConverter {
     ) -> ProviderCompletionResponse;
 }
 
-/// OpenAI converter
+// Implementation of ProviderResponseConverter for OpenAI.
 pub(crate) struct OpenAIResponseConverter;
-/// converts an openai_api_rs [`ChatCompletionResponse`] to a [`ProviderCompletionResponse`]
+
 impl ProviderResponseConverter for OpenAIResponseConverter {
     fn to_generic_provider_response(
         &self,
@@ -127,6 +116,7 @@ impl ProviderResponseConverter for OpenAIResponseConverter {
         }
     }
 }
+
 fn convert_chat_message_to_provider_message(
     chat_message: &ChatCompletionMessageForResponse,
 ) -> ProviderResponseMessage {
@@ -134,10 +124,94 @@ fn convert_chat_message_to_provider_message(
         content: chat_message.content.clone().unwrap_or_default(),
     }
 }
+
 fn convert_chat_choice_to_provider_choice(
     chat_choice: &ChatCompletionChoice,
 ) -> ProviderResponseChoice {
     ProviderResponseChoice {
         message: convert_chat_message_to_provider_message(&chat_choice.message),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use openai_api_rs::v1::common::Usage;
+
+    #[test]
+    fn test_provider_message_role_serialization() {
+        let roles = vec![
+            ProviderMessageRole::User,
+            ProviderMessageRole::System,
+            ProviderMessageRole::Assistant,
+            ProviderMessageRole::Function,
+        ];
+
+        for role in roles {
+            let serialized = serde_json::to_string(&role).unwrap();
+            let deserialized: ProviderMessageRole = serde_json::from_str(&serialized).unwrap();
+            assert_eq!(role, deserialized);
+        }
+    }
+
+    #[test]
+    fn test_provider_completion_message_serialization() {
+        let message = ProviderCompletionMessage {
+            role: ProviderMessageRole::User,
+            content: "Test message".to_string(),
+        };
+
+        let serialized = serde_json::to_string(&message).unwrap();
+        let deserialized: ProviderCompletionMessage = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(message.role, deserialized.role);
+        assert_eq!(message.content, deserialized.content);
+    }
+
+    #[test]
+    fn test_openai_message_converter() {
+        let converter = OpenAIMessageConverter;
+        let message = ProviderCompletionMessage {
+            role: ProviderMessageRole::User,
+            content: "Test message".to_string(),
+        };
+
+        let converted_message = converter.convert_message(&message);
+        assert_eq!(converted_message.content, message.content);
+    }
+
+    #[test]
+    fn test_openai_response_converter() {
+        let usage = Usage {
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 0,
+        };
+        let converter = OpenAIResponseConverter;
+        let response = ChatCompletionResponse {
+            id: "test_id".to_string(),
+            model: "test_model".to_string(),
+            object: "Some obj".to_string(),
+            created: 0,
+            usage,
+            choices: vec![ChatCompletionChoice {
+                index: 0,
+                finish_reason: None,
+                finish_details: None,
+                message: ChatCompletionMessageForResponse {
+                    name: None,
+                    content: Some("Test content".to_string()),
+                    role: MessageRole::user,
+                    function_call: None,
+                },
+            }],
+        };
+
+        let converted_response = converter.to_generic_provider_response(&response);
+        assert_eq!(converted_response.id, response.id);
+        assert_eq!(converted_response.model, response.model);
+        assert_eq!(
+            converted_response.choices[0].message.content,
+            "Test content"
+        );
     }
 }

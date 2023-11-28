@@ -13,7 +13,8 @@ use serde::{Deserialize, Serialize};
 const FILE_REVIEW_SCHEMA: &str = include_str!("../provider/specification/file_review.schema.json");
 const JSON_HANDLING_ADVICE: &str = r#"Provide your analysis in valid JSON format. 
                                     Strictly escape any characters within your response strings that will create invalid JSON, such as \" - i.e., double quotes. 
-                                    Never use comments in your JSON. Ensure that your output exactly conforms to the following JSON Schema 
+                                    Never use comments in your JSON. 
+                                    Ensure that your output exactly conforms to the following JSON Schema 
                                     and you follow the instructions provided in "description" fields."#;
 
 /// Holds the id and [`Vec`] of [`ProviderCompletionMessage`]s
@@ -87,7 +88,7 @@ impl PromptData {
         }
     }
     /// gets a [`PromptData`] for a LLM to summarise the README in a repository for the RepositoryReview.repository_purpose field
-    // TODO: the overall summary of
+    // TODO: the overall summary of repository from the README
     pub(crate) fn _get_readme_summary_prompt(for_provider: &ProviderSettings) -> Self {
         debug!("Provider: {}", for_provider);
         Self {
