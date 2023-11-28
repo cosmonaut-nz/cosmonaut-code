@@ -23,19 +23,6 @@ pub(crate) mod predefined {
 
 const COMMENT_PREFIXES: &[&str] = &["//", "///", "//!", "#", "\"\"\" "];
 
-// TODO: "security_issues": [
-//         {
-//           "code": "count_lines_of_code function",
-//           "threat": "Potential denial of service by processing extremely large files or files with very long lines, as line read is unrestricted.",
-//           "mitigation": "Implement file size and line length limits, and consider processing the file in chunks to protect against out-of-memory conditions."
-//         },
-//         {
-//           "code": "analyse_file_language function (line 54)",
-//           "threat": "Resolving symlinks without checks can lead to symlink attacks in certain contexts.",
-//           "mitigation": "Ensure the resolution of the symbolic links is safe or avoid following symlinks by checking the `DirEntry` type."
-//         }
-//       ],
-
 // Initialize language container and return necessary objects
 pub(crate) fn initialize_language_analysis() -> (
     InMemoryLanguageContainer,
