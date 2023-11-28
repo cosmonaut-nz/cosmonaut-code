@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 license = "MIT"
 readme = "README.md"
+authors = ["Mick Clarke <mick.clarke@cosmonaut.co.nz>"]
 repository = "https://github.com/cosmonaut-nz/cosmonaut-code"
 homepage = ""
 description = """
@@ -23,6 +24,7 @@ image = "0.24.7"
 log = "0.4.20"
 env_logger = "0.10.1"
 dotenvy = "0.15.7"
+inquire = "0.6.2"
 tokio = { version = "1.34.0", features = ["full"] }
 reqwest = { version = "0.11.22", features = ["json"] }
 config = "0.13.1"
