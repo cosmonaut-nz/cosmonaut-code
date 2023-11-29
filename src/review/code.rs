@@ -65,7 +65,7 @@ pub(crate) fn analyse_file_language(
     _rules: &RegexSet,
     _docs: &RegexSet,
 ) -> Option<(Language, u64, i64)> {
-    // TODO: resolve the type of file if docs, dotfile, or config
+    // TODO: resolve the type of file if docs, dotfile, or config and handle separately, particularly documentation, which needs to be summarised
     // if is_vendor(entry.path(), rules)
     //     || is_documentation(relative_path, docs)
     //     || is_dotfile(relative_path)

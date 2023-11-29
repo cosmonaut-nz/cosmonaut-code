@@ -31,7 +31,7 @@
             "items": {
                 "$ref": "#/$defs/securityIssue"
             },
-            "description": "A list of security issues, threats or vulnerabilities, such as OWASP, etc. Give the threat (and reference, such as OWASP, etc.) and mitigation for each"
+            "description": "A list of security issues, threats or vulnerabilities, such as listed by OWASP, etc. Give the threat (and reference, such as listed by OWASP, or any other security frameworks) and mitigation for each"
         },
         "statistics": {
             "$ref": "#/$defs/languageFileType",

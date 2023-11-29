@@ -15,7 +15,7 @@ pub(crate) enum RAGStatus {
 }
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub(crate) struct RepositoryReview {
-    repository_name: String, // Derived from path
+    pub(crate) repository_name: String, // Derived from path
     #[serde(skip_serializing_if = "Option::is_none")]
     generative_ai_service_and_model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
