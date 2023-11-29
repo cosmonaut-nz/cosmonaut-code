@@ -9,11 +9,10 @@ use config::FileFormat;
 use config::{Config, ConfigError, File};
 use inquire::formatter::StringFormatter;
 use inquire::Text;
-use log::warn;
+use log::info;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fmt;
-use std::time::SystemTime;
 
 const DEFAULT_CONFIG: &str = include_str!("../../settings/default.json");
 pub(crate) const ENV_SENSITIVE_SETTINGS_PATH: &str = "SENSITIVE_SETTINGS_PATH";
@@ -36,6 +35,30 @@ pub(crate) struct Settings {
     pub(crate) sensitive: SensitiveSettings,
 }
 
+#[derive(Debug, Deserialize, Default, PartialEq)]
+pub(crate) enum ReviewType {
+    #[default]
+    General,
+    Security,
+    CodeStats,
+}
+/// We offer two types of review:
+/// 1. A full general review of the code
+/// 2. A review focussed on security only
+impl ReviewType {
+    pub(crate) fn from_config(settings: &Settings) -> Self {
+        match settings.review_type {
+            1 => ReviewType::General,
+            2 => ReviewType::Security,
+            3 => ReviewType::CodeStats,
+            _ => {
+                info!("Using default: {:?}", ReviewType::default());
+                ReviewType::default()
+            }
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, PartialEq)]
 pub(crate) struct ProviderSettings {
     pub(crate) name: String,
@@ -46,6 +69,8 @@ pub(crate) struct ProviderSettings {
     pub(crate) api_timeout: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) max_tokens: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) max_retries: Option<i64>,
 }
 #[derive(Serialize, Deserialize, PartialEq)]
 pub(crate) struct SensitiveSettings {
@@ -123,7 +148,7 @@ impl Settings {
                         .required(false)
                         .format(FileFormat::Json),
                 )
-            } else { // TODO: when wired into UI this will need to be handled via UI, can likely remove
+            } else { // TODO: mask the input properly when wired into UI this will need to be handled via UI, can likely remove
                 let formatter: StringFormatter = &|s| {
                     let mut c = s.chars();
                     match c.next() {
@@ -221,16 +246,10 @@ impl fmt::Display for SensitiveSettings {
 /// Locking up the APIKey to prevent accidental display
 /// Note: `fn new(key: String) -> Self` is used by Settings::new, however the compiler moans, so added dead_code allowance
 impl APIKey {
-    pub(crate) fn use_key<T, F>(&self, access_context: &str, f: F) -> T
+    pub(crate) fn use_key<T, F>(&self, f: F) -> T
     where
         F: FnOnce(&str) -> T,
     {
-        let timestamp = SystemTime::now();
-        warn!(
-            "APIKey accessed at {:?} in context '{}'.",
-            timestamp, access_context
-        );
-
         f(&self.0)
     }
 }
@@ -263,6 +282,7 @@ mod tests {
             api_url: "https://api.openai.com".to_string(),
             api_timeout: Some(60),
             max_tokens: Some(2048),
+            max_retries: Some(5),
         };
 
         let serialized = serde_json::to_string(&provider).unwrap();
@@ -287,7 +307,7 @@ mod tests {
     #[test]
     fn test_api_key_use() {
         let api_key = APIKey("secret".to_string());
-        let result = api_key.use_key("test", |key| key.to_uppercase());
+        let result = api_key.use_key(|key| key.to_uppercase());
 
         assert_eq!(result, "SECRET");
     }
@@ -341,6 +361,7 @@ mod tests {
                 api_url: "https://api.openai.com".to_string(),
                 api_timeout: Some(60),
                 max_tokens: Some(2048),
+                max_retries: Some(5),
             }],
             chosen_provider: None,
             default_provider: "OpenAI".to_string(),

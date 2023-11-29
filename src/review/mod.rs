@@ -1,26 +1,26 @@
 //! Handles the file in a software repository.
 //! Iterates over the folder structure, ignoring files or folders that are not relevant.
 //! Passes each relevant (code) file for review.
-pub(crate) mod code;
-mod data;
+mod code;
+pub(crate) mod data;
+pub(crate) mod report;
 mod tools;
 use crate::provider::api::ProviderCompletionResponse;
 use crate::provider::prompts::PromptData;
 use crate::provider::review_code_file;
 use crate::review::code::{analyse_file_language, initialize_language_analysis, FileInfo};
 use crate::review::data::{FileReview, LanguageFileType, RAGStatus, RepositoryReview};
+use crate::review::report::OutputType;
 use crate::review::tools::{get_git_contributors, is_not_blacklisted};
-use crate::settings::Settings;
+use crate::settings::{ProviderSettings, ReviewType, Settings};
 use chrono::{DateTime, Local, Utc};
 use log::{debug, error, info, warn};
 use regex::Regex;
-use serde::Deserialize;
 use std::error::Error;
 use std::ffi::OsStr;
 use std::fmt;
 use std::fs;
-use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use walkdir::{DirEntry, WalkDir};
 
@@ -32,11 +32,7 @@ use walkdir::{DirEntry, WalkDir};
 ///
 pub(crate) async fn assess_codebase(
     settings: Settings,
-) -> Result<RepositoryReview, Box<dyn std::error::Error>> {
-    // Used for the final report to write to disk
-    let output_dir: PathBuf = PathBuf::from(&settings.report_output_path);
-    let output_file_path: PathBuf =
-        create_timestamped_filename(&output_dir, &settings.output_type, Local::now());
+) -> Result<String, Box<dyn std::error::Error>> {
     // Collect the review data in the following data struct
     let mut review: RepositoryReview = RepositoryReview::new();
 
@@ -48,6 +44,10 @@ pub(crate) async fn assess_codebase(
         Ok(path) => path,
         Err(e) => return Err(Box::new(e)),
     };
+
+    // TODO:    Lookup whether there is a README / README.md / README.rs / Readme.txt (and variations)
+    //          If there is extract to a string and pass to LLM for summarising as RepositoryReview.repository_purpose
+
     let blacklisted_dirs: Vec<String> = tools::get_blacklist_dirs(repository_root);
 
     let mut overall_file_count: i32 = 0;
@@ -60,6 +60,7 @@ pub(crate) async fn assess_codebase(
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
     {
+        // This holds hard stats on the file, note that the LLM does attempt to fill in some of this, but often gets it wrong.
         let result: Option<FileInfo> = get_file_info(&entry).and_then(|file_info| {
             analyse_file_language(&file_info, &lc, &rules, &docs).map(
                 |(language, file_size, loc)| FileInfo {
@@ -107,6 +108,11 @@ pub(crate) async fn assess_codebase(
                     continue;
                 }
             };
+            // TODO:
+            //      1. update the stats from the LLM with the 'FileInfo' stats, earlier
+            //      2. count the number of errors, improvements and security issues and add to an overall tally
+            //      3. concat the 'FileReview' summary to an overall tally str and send to LLM for tidy RepositoryReview.summary
+            //      4. format the errors, improvements, and security_issues tally and add to summary
             match review_file(
                 &settings,
                 &file_name_str.to_string(),
@@ -148,121 +154,23 @@ pub(crate) async fn assess_codebase(
     )));
     review.contributors(get_git_contributors(&settings.repository_path));
     review.language_file_types(breakdown.to_language_file_types());
-    let provider = get_provider(&settings);
+    let provider: &ProviderSettings = get_provider(&settings);
     review.generative_ai_service_and_model(Some(format!(
-        "Provider: {}, service: {}, model: {}",
+        "{}, service: {}, model: {}",
         provider.name, provider.service, provider.model
     )));
 
-    // Serialize the review struct to JSON
-    let review_json = serde_json::to_string_pretty(&review)
-        .map_err(|e| format!("Error serializing review: {}", e))?;
+    let report_output_type = OutputType::from_config(&settings);
 
-    // Write the JSON to the specified output file
-    let mut output_file = fs::File::create(&output_file_path)
-        .map_err(|e| format!("Error creating output file: {}", e))?;
-    output_file
-        .write_all(review_json.as_bytes())
-        .map_err(|e| format!("Error writing to output file: {}", e))?;
+    let review_path = match report_output_type.create_report(&settings, &review) {
+        Ok(review_path) => review_path,
+        Err(e) => return Err(Box::new(e)),
+    };
 
     info!("TOTAL NUMBER OF FILES PROCESSED: {}", overall_file_count);
-    Ok(review)
+    Ok(review_path)
 }
 
-/// validates the provided [`Path`] as being a directory that holds a '.git' subdirectory - i.e. is a valid git repository
-fn validate_repository(repository_root: &Path) -> Result<&Path, PathError> {
-    if !repository_root.is_dir() {
-        return Err(PathError {
-            message: format!(
-                "Provided path is not a directory: {}",
-                repository_root.display()
-            ),
-        });
-    }
-    if !repository_root.join(".git").is_dir() {
-        return Err(PathError {
-            message: format!(
-                "Provided path is not a valid Git repository: {}",
-                repository_root.display()
-            ),
-        });
-    }
-
-    Ok(repository_root)
-}
-
-/// gets the content, filename and extension of a [`walkdir::DirEntry`]
-fn get_file_info(entry: &DirEntry) -> Option<FileInfo> {
-    let path = entry.path();
-    let contents = fs::read_to_string(path).ok()?;
-    let name = path.file_name()?.to_os_string();
-    let ext = path.extension()?.to_os_string();
-
-    Some(FileInfo {
-        contents: Arc::new(OsStr::new(contents.as_str()).to_os_string()),
-        name: Arc::new(name),
-        ext: Arc::new(ext),
-        language: None,
-        file_size: None,
-        loc: None,
-    })
-}
-
-/// gives an overall [`RAGStatus`] for the passed [`RepositoryReview`]
-// TODO: This does not work in current form. Weighting may be wrong, but needs review and fix
-fn get_overall_rag_for(review: &RepositoryReview) -> RAGStatus {
-    let mut total_score = 0;
-
-    let num_file_reviews = review.file_reviews.len();
-    for file_review in &review.file_reviews {
-        let rag_weight = match file_review.get_file_rag_status() {
-            RAGStatus::Red => 3,
-            RAGStatus::Amber => 2,
-            RAGStatus::Green => 1,
-        };
-        let score = rag_weight
-            * (1 + file_review.get_errors().as_ref().map_or(0, |v| v.len())
-                + file_review
-                    .get_security_issues()
-                    .as_ref()
-                    .map_or(0, |v| v.len()));
-        total_score += score;
-    }
-    let average_score = total_score as f64 / num_file_reviews as f64;
-
-    if average_score > 2.5 {
-        RAGStatus::Red
-    } else if average_score > 1.5 {
-        RAGStatus::Amber
-    } else {
-        RAGStatus::Green
-    }
-}
-
-//
-#[derive(Debug, Deserialize, Default, PartialEq)]
-enum ReviewType {
-    #[default]
-    General,
-    Security,
-    CodeStats,
-}
-/// We offer two types of review:
-/// 1. A full general review of the code
-/// 2. A review focussed on security only
-impl ReviewType {
-    pub(crate) fn from_config(settings: &Settings) -> Self {
-        match settings.review_type {
-            1 => ReviewType::General,
-            2 => ReviewType::Security,
-            3 => ReviewType::CodeStats,
-            _ => {
-                info!("Using default: {:?}", ReviewType::default());
-                ReviewType::default()
-            }
-        }
-    }
-}
 /// Pulls the text from a [`File`] and sends it to the LLM for review
 ///
 /// This function takes two integer parameters and returns their sum.
@@ -314,28 +222,80 @@ async fn review_file(
     }
 }
 
-// Gets the currently active provider. If there is a misconfiguration (mangled default.json) then panics
+/// validates the provided [`Path`] as being a directory that holds a '.git' subdirectory - i.e. is a valid git repository
+fn validate_repository(repository_root: &Path) -> Result<&Path, PathError> {
+    if !repository_root.is_dir() {
+        return Err(PathError {
+            message: format!(
+                "Provided path is not a directory: {}",
+                repository_root.display()
+            ),
+        });
+    }
+    if !repository_root.join(".git").is_dir() {
+        return Err(PathError {
+            message: format!(
+                "Provided path is not a valid Git repository: {}",
+                repository_root.display()
+            ),
+        });
+    }
+
+    Ok(repository_root)
+}
+/// gets the content, filename and extension of a [`walkdir::DirEntry`]
+fn get_file_info(entry: &DirEntry) -> Option<FileInfo> {
+    let path = entry.path();
+    let contents = fs::read_to_string(path).ok()?;
+    let name = path.file_name()?.to_os_string();
+    let ext = path.extension()?.to_os_string();
+
+    Some(FileInfo {
+        contents: Arc::new(OsStr::new(contents.as_str()).to_os_string()),
+        name: Arc::new(name),
+        ext: Arc::new(ext),
+        language: None,
+        file_size: None,
+        loc: None,
+    })
+}
+/// gives an overall [`RAGStatus`] for the passed [`RepositoryReview`]
+// TODO: This does not work in current form. Weighting may be wrong, but needs review and fix
+fn get_overall_rag_for(review: &RepositoryReview) -> RAGStatus {
+    let mut total_score = 0;
+
+    let num_file_reviews = review.file_reviews.len();
+    for file_review in &review.file_reviews {
+        let rag_weight = match file_review.get_file_rag_status() {
+            RAGStatus::Red => 3,
+            RAGStatus::Amber => 2,
+            RAGStatus::Green => 1,
+        };
+        let score = rag_weight
+            * (1 + file_review.get_errors().as_ref().map_or(0, |v| v.len())
+                + file_review
+                    .get_security_issues()
+                    .as_ref()
+                    .map_or(0, |v| v.len()));
+        total_score += score;
+    }
+    let average_score = total_score as f64 / num_file_reviews as f64;
+
+    if average_score > 2.5 {
+        RAGStatus::Red
+    } else if average_score > 1.5 {
+        RAGStatus::Amber
+    } else {
+        RAGStatus::Green
+    }
+}
+
+// Gets the currently active provider. If there is a misconfiguration (i.e., a mangled `default.json`) then panics
 fn get_provider(settings: &Settings) -> &crate::settings::ProviderSettings {
     let provider: &crate::settings::ProviderSettings = settings.get_active_provider()
                                               .expect("Either a default or chosen provider should be configured in \'default.json\'. \
                                               Either none was found, or the default provider did not match any name in the configured providers list.");
     provider
-}
-
-/// Creates a timestamped file
-///
-/// # Parameters
-///
-/// * `base_path` - where the file will be created
-/// * `file_extension` - the file extension, e.g., '.json'
-/// * `timestamp` - the current time, makes testing easier to mock. Example input: 'Local::now()'
-fn create_timestamped_filename(
-    base_path: &Path,
-    file_extension: &str,
-    timestamp: DateTime<Local>,
-) -> PathBuf {
-    let formatted_timestamp = timestamp.format("%Y%m%d_%H%M%S").to_string();
-    base_path.join(format!("{}.{}", formatted_timestamp, file_extension))
 }
 
 /// extracts the final part of the path
@@ -440,7 +400,6 @@ fn _pretty_print_json_for_debug(json_str: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::TimeZone;
 
     const JSON_OPENING: &str = "```json";
     const JSON_CLOSE: &str = "```";
@@ -465,31 +424,6 @@ mod tests {
         let expected_json = "{\"key\": \"value\"}";
         let result = strip_artifacts_from(json_str_with_extra_text);
         assert_eq!(result.unwrap(), expected_json);
-    }
-
-    #[test]
-    fn test_create_timestamped_filename() {
-        let base_path = PathBuf::from("/some/path");
-        let file_extension = "txt";
-        let mock_time = Local.with_ymd_and_hms(2022, 4, 1, 12, 30, 45).unwrap();
-
-        let result = create_timestamped_filename(&base_path, file_extension, mock_time);
-
-        // Test that the result is in the correct directory
-        assert_eq!(result.parent(), Some(base_path.as_path()));
-
-        // Test the file extension
-        assert_eq!(
-            result.extension(),
-            Some(std::ffi::OsStr::new(file_extension))
-        );
-
-        // Test the structure and correctness of the filename
-        let expected_filename = format!("20220401_123045.{}", file_extension);
-        assert_eq!(
-            result.file_name().unwrap().to_str().unwrap(),
-            &expected_filename
-        );
     }
 
     #[test]

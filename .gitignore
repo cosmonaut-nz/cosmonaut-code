@@ -5,8 +5,7 @@ target
 # Generated files
 /Cargo.lock
 **/*.rs.bk
-/output/*.json
-/output/*.csv
+/output
 
 # IDEs and editors
 /.idea

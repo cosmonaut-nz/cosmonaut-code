@@ -8,7 +8,10 @@ mod provider;
 mod review;
 mod settings;
 use log::{error, info};
-use std::time::{Duration, Instant};
+use std::{
+    process::Command,
+    time::{Duration, Instant},
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -26,9 +29,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Call the assess_codebase, according to user configuration, either from commandline, or json settings files.
-    review::assess_codebase(settings).await?;
+    let report_output = review::assess_codebase(settings).await?;
 
     info!("CODE REVIEW COMPLETE. See the output report for details.");
+    if let Err(e) = open_file(&report_output) {
+        error!("Failed to open file: {}", e);
+    }
 
     print_exec_duration(start.elapsed());
     Ok(())
@@ -45,4 +51,19 @@ fn print_exec_duration(duration: Duration) {
         "TOTAL EXECUTION TIME: {} minutes, {} seconds, and {} milliseconds",
         minutes, seconds, millis
     );
+}
+fn open_file(file_path: &str) -> std::io::Result<()> {
+    if cfg!(target_os = "windows") {
+        Command::new("cmd")
+            .args(["/C", "start", file_path])
+            .spawn()?;
+    } else if cfg!(target_os = "macos") {
+        Command::new("open").arg(file_path).spawn()?;
+    } else if cfg!(target_os = "linux") {
+        Command::new("xdg-open").arg(file_path).spawn()?;
+    } else {
+        println!("Unsupported OS");
+    }
+
+    Ok(())
 }

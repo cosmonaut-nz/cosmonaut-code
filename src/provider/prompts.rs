@@ -15,7 +15,7 @@ const JSON_HANDLING_ADVICE: &str = r#"Provide your analysis in valid JSON format
                                     Strictly escape any characters within your response strings that will create invalid JSON, such as \" - i.e., double quotes. 
                                     Never use comments in your JSON. 
                                     Ensure that your output exactly conforms to the following JSON Schema 
-                                    and you follow the instructions provided in "description" fields."#;
+                                    and you follow exactly the instructions provided in "description" fields."#;
 
 /// Holds the id and [`Vec`] of [`ProviderCompletionMessage`]s
 #[derive(Serialize, Deserialize, Debug)]
