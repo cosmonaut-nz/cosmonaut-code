@@ -3,6 +3,8 @@
 <img src="assets/img/cosmonaut_logo_trans.png" width="12%" height="12%">
 >_ we are cosmonaut
 
+[![Rust Check](https://github.com/cosmonaut-nz/cosmonaut-code/actions/workflows/rust-check.yml/badge.svg)](https://github.com/cosmonaut-nz/cosmonaut-code/actions/workflows/rust-check.yml)
+
 ## purpose
 
 it's a code explorer, explainer and assessment tool.
@@ -51,9 +53,9 @@ clone the repo:
 
 `git clone https://github.com/cosmonaut-nz/cosmonaut-code.git`
 
-`cd costmonaut-code`
+`cd cosmonaut-code`
 
-Add a `development.json` with the following:
+Add a `settings.json` with the following:
 
 ```json
 
@@ -69,9 +71,28 @@ Add a `development.json` with the following:
 
 ```
 
+```bash
+
+export SENSITIVE_SETTINGS_PATH=[PATH_TO_YOUR_SETTINGS.JSON]
+
+```
+
 _Optional_
 
-Edit the `settings/default.json` to change the current defaults
+edit the `settings/default.json` to change the current defaults.
+
+see [OpenAI Models](https://platform.openai.com/docs/models/gpt-4-and-gpt-4-turbo) for details
+
+review type is:
+
+1. full review
+2. security review only
+3. mock run, not using LLM for code review
+
+output types are:
+
+1. `html`
+2. `json`
 
 ```json
 
@@ -81,12 +102,9 @@ Edit the `settings/default.json` to change the current defaults
             "name": "openai",
             "service": "gpt-4",
             "model": "gpt-4-1106-preview",
-            "api_url": "https://api.openai.com/v1/chat/completions",
-            "api_timeout": 60,
-            "max_tokens": 4000
+            "api_url": "https://api.openai.com/v1/chat/completions"
         }
     ],
-    "chosen_provider": null, 
     "default_provider": "openai",
     "output_type": "json",
     "review_type": 1
@@ -117,7 +135,7 @@ status today is: *"it works, but it is not pretty or very user friendly."*
 <table>
   <thead>
     <tr>
-      <th width="50%"> Current (version 0.1)</th>
+      <th width="50%"> Current (version 0.2)</th>
       <th width="50%">Next (version 1.0)</th>
     </tr>
   </thead>
@@ -131,26 +149,24 @@ status today is: *"it works, but it is not pretty or very user friendly."*
 
 [X] output in json
 
+[X] output in html
+
 [ ] packaging so user can either install via `cargo install` or download the binary.
 
 [ ] output in pdf
 
 [ ] tune the prompts for clarity and accuracy
 
-[ ] run from pipeline (github actions, gitlab-ci)
+[ ] GitHub Actions integration
 
-[ ] enable local llm review of code (likely llama-based)
-
-[ ] install script
+[ ] enable private llm review of code (likely llama-based)
 
 </td>
 <td>
 
-[ ] user interface (maybe not in rust, if not then in python)
+[ ] proper documentation
 
-[ ] load github repository remotely
-
-[ ] load gitlab code repository remotely
+[ ] GitLab pipeline integration
 
 [ ] enable google palm review of code
 
@@ -183,7 +199,6 @@ The code is broken into modules to ensure a separation of concerns:
 └── src
     ├── common
     │   └── mod.rs
-    ├── lib.rs
     ├── main.rs
     ├── provider
     │   ├── api.rs
@@ -193,6 +208,7 @@ The code is broken into modules to ensure a separation of concerns:
     │   ├── code.rs
     │   ├── data.rs
     │   ├── mod.rs
+    │   ├── report.rs
     │   └── tools.rs
     └── settings
         └── mod.rs
