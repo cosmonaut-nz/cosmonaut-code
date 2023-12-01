@@ -28,13 +28,18 @@ use serde_json::json;
 ///
 /// * A response from the LLM ['ProviderResponseMessage']
 ///
-pub(crate) async fn review_code_file(
+pub(crate) async fn review_or_summarise(
+    request_type: RequestType,
     settings: &Settings,
     provider_settings: &ProviderSettings,
-    prompt_data: PromptData,
+    prompt_data: &PromptData,
 ) -> Result<ProviderCompletionResponse, Box<dyn std::error::Error>> {
     match create_api_provider(provider_settings) {
-        Ok(provider_handler) => provider_handler.review_code(settings, prompt_data).await,
+        Ok(provider_handler) => {
+            provider_handler
+                .ask_request_of_provider(&request_type, settings, prompt_data)
+                .await
+        }
         Err(err) => Err(Box::new(std::io::Error::new(
             std::io::ErrorKind::Other,
             format!("API provider error: {}", err),
@@ -61,87 +66,102 @@ fn create_api_provider(
 /// A gamble on the future (geddit) of Rust here.
 #[async_trait::async_trait]
 trait APIProvider {
-    async fn review_code(
+    async fn ask_request_of_provider(
         &self,
+        request_type: &RequestType,
         settings: &Settings,
-        prompt_data: PromptData,
+        prompt_data: &PromptData,
     ) -> Result<ProviderCompletionResponse, Box<dyn std::error::Error>>;
 }
 
 /// Holds a consistent 'seed' value
 const SEED_VAL: i64 = 1;
+pub(crate) enum RequestType {
+    Review,
+    Summarise,
+}
 /// Creates an API provider, e.g., 'OpenAI' (using the openai_api_rs crate)
 struct OpenAIProvider {
     model: String,
 }
 #[async_trait::async_trait]
 impl APIProvider for OpenAIProvider {
-    async fn review_code(
+    async fn ask_request_of_provider(
         &self,
+        request_type: &RequestType,
         settings: &Settings,
-        prompt_data: PromptData,
+        prompt_data: &PromptData,
     ) -> Result<ProviderCompletionResponse, Box<dyn std::error::Error>> {
-        settings
-            .sensitive
-            .api_key
-            .use_key(|key| {
-                let client: Client = Client::new(key.to_string());
-                // Only works on latest versions, as of 2023/12
-                // TODO: Check that the right model version is being used, if older don't add response_format and seed
-                let res_format = json!({ "type": "json_object" });
-                // Enables (mostly) deterministic outputs, beta in API, not in crate
-                let completion_msgs: Vec<ChatCompletionMessage> =
-                    OpenAIMessageConverter.convert_messages(&prompt_data.messages);
-                let req: ChatCompletionRequest =
-                    ChatCompletionRequest::new(self.model.to_string(), completion_msgs)
-                        .response_format(res_format)
-                        .seed(SEED_VAL);
-                async move {
-                    let mut attempts = 0;
-                    let max_retries = settings
-                        .get_active_provider()
-                        .map_or(0, |provider_settings| {
-                            provider_settings.max_retries.unwrap_or(0)
-                        });
-                    loop {
-                        // TODO nesting so deep right now! Refactor to tidy this up.
-                        match client.chat_completion(req.clone()) {
-                            Ok(openai_res) => {
-                                let provider_completion_response: ProviderCompletionResponse =
-                                    OpenAIResponseConverter
-                                        .to_generic_provider_response(&openai_res);
-                                return Ok(provider_completion_response);
-                            }
-                            Err(openai_err) => {
-                                attempts += 1;
-                                if attempts >= max_retries {
-                                    return Err(format!(
-                                        "OpenAI API request failed after {} attempts: {}",
-                                        attempts, openai_err
-                                    )
-                                    .into());
-                                }
-                                if let Some(err_code) = extract_http_status(&openai_err.message) {
-                                    if err_code == 502 && attempts < max_retries {
-                                        warn!(
-                                            "Received 502 error, retrying... (Attempt {} of {})",
-                                            attempts, max_retries
-                                        );
-                                        info!("Retrying request to OpenAI API.");
-                                        continue;
-                                    }
-                                }
-                                return Err(
-                                    format!("OpenAI API request failed: {}", openai_err).into()
-                                );
-                            }
-                        }
-                    }
-                }
-            })
-            .await
+        let key = settings.sensitive.api_key.use_key(|key| key.to_string());
+
+        let client: Client = Client::new(key);
+        let completion_msgs = OpenAIMessageConverter.convert_messages(&prompt_data.messages);
+        let req = self.build_chat_completion_request(request_type, completion_msgs);
+
+        self.attempt_api_request(&client, &req, settings).await
     }
 }
+
+impl OpenAIProvider {
+    fn build_chat_completion_request(
+        &self,
+        request_type: &RequestType,
+        completion_msgs: Vec<ChatCompletionMessage>,
+    ) -> ChatCompletionRequest {
+        let mut request = ChatCompletionRequest::new(self.model.to_string(), completion_msgs);
+
+        if self.model.contains("preview") || self.model.contains("turbo") {
+            // Apply 'seed' for both 'Summarise' and 'Review'
+            request = request.seed(SEED_VAL);
+
+            // Apply 'response_format' only for 'Review'
+            if let RequestType::Review = request_type {
+                let res_format = json!({ "type": "json_object" });
+                request = request.response_format(res_format);
+            }
+        }
+
+        request
+    }
+
+    async fn attempt_api_request(
+        &self,
+        client: &Client,
+        req: &ChatCompletionRequest,
+        settings: &Settings,
+    ) -> Result<ProviderCompletionResponse, Box<dyn std::error::Error>> {
+        let max_retries = settings
+            .get_active_provider()
+            .map_or(0, |provider_settings| {
+                provider_settings.max_retries.unwrap_or(0)
+            });
+
+        let mut attempts = 0;
+        while attempts < max_retries {
+            match client.chat_completion(req.clone()) {
+                Ok(openai_res) => {
+                    return Ok(OpenAIResponseConverter.to_generic_provider_response(&openai_res));
+                }
+                Err(openai_err) => {
+                    attempts += 1;
+                    if let Some(err_code) = extract_http_status(&openai_err.message) {
+                        if err_code == 502 {
+                            warn!(
+                                "Received 502 error, retrying... (Attempt {} of {})",
+                                attempts, max_retries
+                            );
+                            info!("Retrying request to OpenAI API.");
+                            continue;
+                        }
+                    }
+                    return Err(format!("OpenAI API request failed: {}", openai_err).into());
+                }
+            }
+        }
+        Err(format!("OpenAI API request failed after {} attempts", max_retries).into())
+    }
+}
+
 fn extract_http_status(error_message: &str) -> Option<u16> {
     if error_message.contains("502") {
         return Some(502);

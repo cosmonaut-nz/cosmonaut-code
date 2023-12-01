@@ -2,7 +2,8 @@
 <html>
 
 <head>
-    <title>&gt;_ cosmonaut - report for {{repository_name}}</title>
+    <title>&gt;_ cosmonaut</title>
+    <link rel="icon" type="image/png" href="https://cosmonaut.co.nz/img/cosmonaut_logo_trans.png">
     <style>
         body {
             font-family: monospace;
@@ -15,30 +16,49 @@
         }
 
         .header img {
-            width: 75px;
-            height: 75px;
+            width: 100px;
+            height: 100px;
             margin-right: 10px;
+        }
+
+        h1,
+        h2 {
+            color: #1C2A38;
         }
 
         .summary,
         .section {
             margin: 10px 0;
             padding: 10px;
-            border: 1px solid #ddd;
+            border: 1px solid #A8B3BF;
             border-radius: 5px;
         }
 
+        .summary,
+        .section,
+        .detailed-section {
+            margin: 3px 0;
+            padding: 10px;
+            border: 1px solid #A8B3BF;
+            border-radius: 5px;
+        }
+
+        .detailed-section {
+            background-color: #f2f2f2;
+        }
+
         .collapsible {
+            margin: 3px 0;
             background-color: #eee;
             color: #444;
             cursor: pointer;
-            padding: 10px;
+            padding: 5px;
             width: 100%;
-            border: none;
+            border: 1px solid #A8B3BF;
             text-align: left;
             outline: none;
-            font-size: 15px;
             transition: 0.4s;
+            border-radius: 5px;
         }
 
         .collapsible:after {
@@ -46,7 +66,8 @@
             color: #777;
             font-weight: bold;
             float: right;
-            margin-left: 5px;
+            margin-left: 3px;
+            border-radius: 5px;
         }
 
         .active:after {
@@ -84,101 +105,143 @@
 <body>
     <div class="header">
         <img src="https://cosmonaut.co.nz/img/cosmonaut_logo_trans.png" alt="we are cosmonaut">
-        <h1>&gt;_ cosmonaut-code. report created: {{date}}</h1>
+        <h1>&gt;_ cosmonaut-code</h1>
     </div>
     <div class="summary">
-        <h2>Repository Name: {{repository_name}}</h2>
-        <p>Repository Type: {{repository_type}}</p>
-        <p>Repository Purpose: {{repository_purpose}}</p>
-        <p>Findings Summary: {{summary}}</p>
-        <p>RAG Status:
-            <span
-                class="{{#if (eq repository_rag_status 'Green')}}status-green{{/if}}{{#if (eq repository_rag_status 'Amber')}}status-amber{{/if}}{{#if (eq repository_rag_status 'Red')}}status-red{{/if}}">
-                {{repository_rag_status}}
-            </span>
-        </p>
-        <p>Total Lines of Code: {{sum_loc}}</p>
-        <p>Number of Files: {{sum_num_files}}</p>
-        <p>Generative AI Service and Model: <em>{{generative_ai_service_and_model}}</em></p>
-    </div>
-    <button type="button" class="collapsible"><strong>Language File Types:</strong></button>
-    <div class="content">
-        {{#each language_file_types}}
-        <div class='section'>
-            <p><strong>Language</strong>: {{language}}</p>
-            <p><strong>Extension</strong>: {{extension}}</p>
-            <p><strong>Percentage</strong>: {{percentage}}</p>
-            <p><strong>Loc</strong>: {{loc}}</p>
-            <p><strong>Total Size</strong>: {{total_size}}</p>
-            <p><strong>To File Count</strong>: {{file_count}}</p>
-        </div>
-        {{/each}}
-    </div>
-    <button type="button" class="collapsible"><strong>Contributors:</strong></button>
-    <div class="content">
-        {{#each contributors}}
-        <div class='section'>
-            <p><strong>Name</strong>: {{name}}</p>
-            <p><strong>Num Commits</strong>: {{num_commits}}</p>
-            <p><strong>Last Contribution</strong>: {{last_contribution}}</p>
-            <p><strong>Percentage</strong>: {{percentage}}</p>
-        </div>
-        {{/each}}
-    </div>
-    <button type="button" class="collapsible"><strong>File Reviews:</strong></button>
-    <div class="content">
-        {{#each file_reviews}}
-        <div class='section'>
-            <p><strong>Filename</strong>: {{filename}}</p>
-            <p><strong>Summary</strong>: {{summary}}</p>
-            <p><strong>File Rag Status</strong>: <span
-                    class="{{#if (eq file_rag_status 'Green')}}status-green{{/if}}{{#if (eq file_rag_status 'Amber')}}status-amber{{/if}}{{#if (eq file_rag_status 'Red')}}status-red{{/if}}">
-                    {{file_rag_status}}
-                </span></p>
-
-            <button type="button" class="collapsible"><strong>Errors:</strong></button>
-            <div class="content">
-                {{#each errors}}
-                <div class='section'>
-                    <p><strong>Code</strong>: {{code}}</p>
-                    <p><strong>Issue</strong>: {{issue}}</p>
-                    <p><strong>Resolution</strong>: {{resolution}}</p>
-                </div>
-                {{/each}}
-            </div>
-
-            <button type="button" class="collapsible"><strong>Improvements:</strong></button>
-            <div class="content">
-                {{#each improvements}}
-                <div class='section'>
-                    <p><strong>Code</strong>: {{code}}</p>
-                    <p><strong>Suggestion</strong>: {{suggestion}}</p>
-                    <p><strong>Example</strong>: {{example}}</p>
-                </div>
-                {{/each}}
-            </div>
-
-            <button type="button" class="collapsible"><strong>Security Issues:</strong></button>
-            <div class="content">
-                {{#each security_issues}}
-                <div class='section'>
-                    <p><strong>Code</strong>: {{code}}</p>
-                    <p><strong>Threat</strong>: {{threat}}</p>
-                    <p><strong>Mitigation</strong>: {{mitigation}}</p>
-                </div>
-                {{/each}}
-            </div>
-
-            <p><strong>Statistics</strong>:
-            <div class='section'>
-                <p><strong>Language</strong>: {{statistics.language}}</p>
-                <p><strong>Extension</strong>: {{statistics.extension}}</p>
-                <p><strong>Loc</strong>: {{statistics.loc}}</p>
-            </div>
+        <h2>Repository name: {{repository_review.repository_name}}</h2>
+        <p><em style="font-size: smaller;">Report created: {{repository_review.date}}</em></p>
+        <p><em style="font-size: smaller;">Generative AI provider used:
+                {{repository_review.generative_ai_service_and_model}}</em></p>
+        <p>Repository type: {{repository_review.repository_type}}</p>
+        {{#if repository_review.repository_purpose}}
+        <p>Repository purpose: </p>
+        {{/if}}
+        <p>File review summary: </p>
+        <div style="margin-left: 10px; font-size: smaller;">
+            <p>RAG status:
+                <span
+                    class="{{#if (eq repository_review.repository_rag_status 'Green')}}status-green{{/if}}{{#if (eq repository_review.repository_rag_status 'Amber')}}status-amber{{/if}}{{#if (eq repository_review.repository_rag_status 'Red')}}status-red{{/if}}">
+                    <strong>{{repository_review.repository_rag_status}} {{#if (eq
+                        repository_review.repository_rag_status 'Red')}} - immediate action recommended.{{/if}}</strong>
+                </span>
             </p>
+            <p>Total lines of code (LOC): {{repository_review.sum_loc}}</p>
+            <p>Total number of files: {{repository_review.sum_num_files}}</p>
+            {{#if repository_review.summary.summary}}
+            <div class="detailed-section">
+                <p style="font-size: smaller;">{{repository_review.summary.summary}}</p>
+            </div>
+            {{/if}}
+            <div class="detailed-section">
+                <p>Security issues - <em style="font-size: smaller;">a list of security issues, threats or
+                        vulnerabilities,
+                        such as listed by OWASP, or
+                        CVE security vulnerability, grouped by CVSS category</em></p>
+                <p style="font-size: smaller;">- Low: {{repository_review.summary.security_issues.low}}</p>
+                <p style="font-size: smaller;">- Medium: {{repository_review.summary.security_issues.medium}}</p>
+                <p style="font-size: smaller;">- High: {{repository_review.summary.security_issues.high}}</p>
+                <p style="font-size: smaller;">- Critical: {{repository_review.summary.security_issues.critical}}
+                </p>
+            </div>
+            <div class="detailed-section">
+                <p>Code errors - <em style="font-size: smaller;">a list of syntatic or idiomatic errors, where the
+                        code
+                        does
+                        not meet language standards
+                        or best practice</em></p>
+                <p style="font-size: smaller;">- Total: {{repository_review.summary.errors}}</p>
+            </div>
+            <div class="detailed-section">
+                <p>Code improvements - <em style="font-size: smaller;">a list of non-critical code improvements that
+                        will help code quality, readability and maintainability</em></p>
+                <p style="font-size: smaller;">- Total: {{repository_review.summary.improvements}}</p>
+            </div>
         </div>
-        {{/each}}
+        <button type="button" class="collapsible"><strong>Language file types:</strong></button>
+        <div class="content">
+            {{#each repository_review.language_file_types}}
+            <div class='section'>
+                <p><strong>Language</strong>: {{language}}</p>
+                <p><strong>Extension</strong>: &#46;{{extension}}</p>
+                <p><strong>Percentage</strong>: {{format_percentage percentage}}&#37;</p>
+                <p><strong>Loc</strong>: {{loc}}</p>
+                <p><strong>Total size</strong>: {{total_size}} bytes</p>
+                <p><strong>Total file count</strong>: {{file_count}}</p>
+            </div>
+            {{/each}}
+        </div>
+        <button type="button" class="collapsible"><strong>Contributors:</strong></button>
+        <div class="content">
+            {{#each repository_review.contributors}}
+            <div class='section'>
+                <p><strong>Name</strong>: {{name}}</p>
+                <p><strong>Num commits</strong>: {{num_commits}}</p>
+                <p><strong>Last contribution</strong>: {{last_contribution}}</p>
+                <p><strong>Percentage</strong>: {{format_percentage percentage}}&#37;</p>
+            </div>
+            {{/each}}
+        </div>
+        {{#if repository_review.file_reviews}}
+        <button type="button" class="collapsible"><strong>File reviews:</strong></button>
+        <div class="content">
+            {{#each repository_review.file_reviews}}
+            <div class='section'>
+                <p><strong>Filename</strong>: {{filename}}</p>
+                <p><strong>Summary</strong>: {{summary}}</p>
+                <p><strong>File RAG status</strong>: <span
+                        class="{{#if (eq file_rag_status 'Green')}}status-green{{/if}}{{#if (eq file_rag_status 'Amber')}}status-amber{{/if}}{{#if (eq file_rag_status 'Red')}}status-red{{/if}}">
+                        {{file_rag_status}}
+                    </span></p>
+
+                <button type="button" class="collapsible"><strong>Security Issues:</strong></button>
+                <div class="content">
+                    {{#each security_issues}}
+                    <div class='section'>
+                        <p><strong>Severity</strong>: {{severity}}</p>
+                        <p><strong>Code</strong>: {{code}}</p>
+                        <p><strong>Threat</strong>: {{threat}}</p>
+                        <p><strong>Mitigation</strong>: {{mitigation}}</p>
+                    </div>
+                    {{/each}}
+                </div>
+                {{#if errors}}
+                <button type="button" class="collapsible"><strong>Errors:</strong></button>
+                <div class="content">
+                    {{#each errors}}
+                    <div class='section'>
+                        <p><strong>Code</strong>: {{code}}</p>
+                        <p><strong>Issue</strong>: {{issue}}</p>
+                        <p><strong>Resolution</strong>: {{resolution}}</p>
+                    </div>
+                    {{/each}}
+                </div>
+                {{/if}}
+                {{#if improvements}}
+                <button type="button" class="collapsible"><strong>Improvements:</strong></button>
+                <div class="content">
+                    {{#each improvements}}
+                    <div class='section'>
+                        <p><strong>Code</strong>: {{code}}</p>
+                        <p><strong>Suggestion</strong>: {{suggestion}}</p>
+                        <p><strong>Example</strong>: {{example}}</p>
+                    </div>
+                    {{/each}}
+                </div>
+                {{/if}}
+                <p><strong>Statistics</strong>:
+                <div class='section'>
+                    <p><strong>Language</strong>: {{statistics.language}}</p>
+                    <p><strong>Extension</strong>: &#46;{{statistics.extension}}</p>
+                    <p><strong>LOC</strong>: {{statistics.loc}}</p>
+                    <p><strong>File size</strong>: {{statistics.total_size}} bytes</p>
+                </div>
+                </p>
+            </div>
+            {{/each}}
+        </div>
+        {{/if}}
     </div>
+
     <script>
         var coll = document.getElementsByClassName("collapsible");
 
@@ -189,5 +252,8 @@
         }
     </script>
 </body>
+<footer>
+    <p><em style="font-size: smaller;">Copyright &#169; Cosmonaut (New Zealand) Ltd, {{current_year}}.</em></p>
+</footer>
 
 </html>

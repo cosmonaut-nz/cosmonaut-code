@@ -6,32 +6,28 @@
     "properties": {
         "filename": {
             "type": "string",
-            "description": "The name of the file"
-        },
-        "summary": {
-            "type": "string",
-            "description": "A summary of the findings of the code review"
+            "description": "The name of the file as provided"
         },
         "errors": {
             "type": "array",
             "items": {
                 "$ref": "#/$defs/error"
             },
-            "description": "A list of syntatic or idiomatic errors found in the code giving the issue and potential resolution for each"
-        },
-        "improvements": {
-            "type": "array",
-            "items": {
-                "$ref": "#/$defs/improvement"
-            },
-            "description": "A list of code improvements, giving a suggestion and example for each"
+            "description": "A list of syntatic or idiomatic errors (not security related) found in the code giving the issue and potential resolution for each. Where the code does not meet language standards, best practice or clearly deviates from DRY or SOLID principlesY"
         },
         "security_issues": {
             "type": "array",
             "items": {
                 "$ref": "#/$defs/securityIssue"
             },
-            "description": "A list of security issues, threats or vulnerabilities, such as listed by OWASP, etc. Give the threat (and reference, such as listed by OWASP, or any other security frameworks) and mitigation for each"
+            "description": "A list of security issues, threats or vulnerabilities, such as listed by OWASP, or CVE security vulnerability, etc. Give the threat (and reference, such as listed by OWASP, CVE or any other security frameworks) and mitigation for each"
+        },
+        "improvements": {
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/improvement"
+            },
+            "description": "A list of non-critical code improvements that will improve code quality, readability and maintainability, giving a suggestion and example for each"
         },
         "statistics": {
             "$ref": "#/$defs/languageFileType",
@@ -39,18 +35,21 @@
         },
         "file_rag_status": {
             "type": "string",
-            "description": "In {Red, Amber, Green}. If errors.len() == 0 && security_issues.len ==0() && improvements.len() <=10 then file_rag_status = 'Green'",
+            "description": "A RAG status for the file according to the findings",
             "enum": [
                 "Red",
                 "Amber",
                 "Green"
             ]
+        },
+        "summary": {
+            "type": "string",
+            "description": "A brief and concise summary of the findings during the code review ensuring that the summary reflects the findings, such as security_issues, errors or improvements."
         }
     },
     "required": [
         "filename",
-        "summary",
-        "file_rag_status"
+        "summary"
     ],
     "$defs": {
         "error": {
@@ -62,7 +61,7 @@
                 },
                 "issue": {
                     "type": "string",
-                    "description": "A description of the error"
+                    "description": "An error which will directly impact the function or performance of the code. An error is where the code is clearly non-adherent to language standards, best practice or clearly deviates from DRY or SOLID principles."
                 },
                 "resolution": {
                     "type": "string",
@@ -73,6 +72,39 @@
                 "code",
                 "issue",
                 "resolution"
+            ]
+        },
+        "securityIssue": {
+            "type": "object",
+            "properties": {
+                "severity": {
+                    "type": "string",
+                    "description": "Where the severity strictly aligns to a value found in the Common Vulnerability Scoring System (CVSS), version 3.1.",
+                    "enum": [
+                        "Low",
+                        "Medium",
+                        "High",
+                        "Critical"
+                    ]
+                },
+                "code": {
+                    "type": "string",
+                    "description": "Where in the code the issue was found. Include line of code"
+                },
+                "threat": {
+                    "type": "string",
+                    "description": "A description of the threat or vulnerability, such as listed by OWASP, or CVE security vulnerability, etc. Detail the implications of the threat."
+                },
+                "mitigation": {
+                    "type": "string",
+                    "description": "A description of how the threat can be mitigated"
+                }
+            },
+            "required": [
+                "severity",
+                "code",
+                "threat",
+                "mitigation"
             ]
         },
         "improvement": {
@@ -95,28 +127,6 @@
                 "code",
                 "suggestion",
                 "example"
-            ]
-        },
-        "securityIssue": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "string",
-                    "description": "Where in the code the issue was found. Include line of code"
-                },
-                "threat": {
-                    "type": "string",
-                    "description": "A description of the threat, including implications"
-                },
-                "mitigation": {
-                    "type": "string",
-                    "description": "A description of how the threat can be mitigated"
-                }
-            },
-            "required": [
-                "code",
-                "threat",
-                "mitigation"
             ]
         },
         "languageFileType": {
@@ -151,10 +161,7 @@
                     "description": "A roll-up count of all LanguageFileTypes of this language"
                 }
             },
-            "required": [
-                "language",
-                "extension"
-            ]
+            "required": []
         }
     }
 }

@@ -14,6 +14,8 @@ use serde::{Deserialize, Serialize};
 use std::env;
 use std::fmt;
 
+use crate::review::report::OutputType;
+
 const DEFAULT_CONFIG: &str = include_str!("../../settings/default.json");
 pub(crate) const ENV_SENSITIVE_SETTINGS_PATH: &str = "SENSITIVE_SETTINGS_PATH";
 
@@ -26,7 +28,7 @@ pub(crate) struct Settings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) chosen_provider: Option<String>,
     pub(crate) default_provider: String,
-    pub(crate) output_type: String,
+    pub(crate) output_type: OutputType,
     pub(crate) review_type: i32,
     pub(crate) repository_path: String,
     pub(crate) report_output_path: String,
@@ -148,7 +150,7 @@ impl Settings {
                         .required(false)
                         .format(FileFormat::Json),
                 )
-            } else { // TODO: mask the input properly when wired into UI this will need to be handled via UI, can likely remove
+            } else { // TODO: Remove this to just use env variables
                 let formatter: StringFormatter = &|s| {
                     let mut c = s.chars();
                     match c.next() {
@@ -253,18 +255,6 @@ impl APIKey {
         f(&self.0)
     }
 }
-/// Custom Debug implementation for APIKey to prevent accidental printing of secret
-impl fmt::Debug for APIKey {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "*** sensitive data hidden ***")
-    }
-}
-/// Custom Display implementation for APIKey to prevent accidental printing of secret
-impl fmt::Display for APIKey {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "*** sensitive data hidden ***")
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -324,7 +314,7 @@ mod tests {
             file,
             r#"{{
                 "default_provider": "TestProvider",
-                "output_type": "JSON",
+                "output_type": "json",
                 "review_type": 1,
                 "repository_path": "test/repo/path",
                 "report_output_path": "test/report/path",
@@ -340,7 +330,7 @@ mod tests {
         let settings = Settings::new().unwrap();
 
         assert_eq!(settings.default_provider, "TestProvider");
-        assert_eq!(settings.output_type, "JSON");
+        assert_eq!(settings.output_type, OutputType::Json);
         assert_eq!(settings.review_type, 1);
         assert_eq!(settings.repository_path, "test/repo/path");
         assert_eq!(settings.report_output_path, "test/report/path");
@@ -365,7 +355,7 @@ mod tests {
             }],
             chosen_provider: None,
             default_provider: "OpenAI".to_string(),
-            output_type: "JSON".to_string(),
+            output_type: OutputType::Json,
             review_type: 1,
             repository_path: "path/to/repo".to_string(),
             report_output_path: "path/to/report".to_string(),
