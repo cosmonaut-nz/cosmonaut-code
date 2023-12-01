@@ -131,35 +131,21 @@ status today is: *"it works, but it is not pretty or very user friendly."*
 
 ## outline tasks
 
-[X] load local repository
-
-[X] enable openai review of code
-
-[X] output in json
-
-[X] output in html
-
-[ ] packaging so user can either install via `cargo install` or download the binary.
-
-[ ] output in pdf
-
-[ ] tune the prompts for clarity and accuracy
-
-[ ] GitHub Actions integration
-
-[ ] enable private llm review of code (likely llama-based)
-
-[ ] proper documentation
-
-[ ] GitLab pipeline integration
-
-[ ] enable google palm review of code
-
-[ ] enable anthropic claud review of code
-
-[ ] enable meta llama review of code
-
-[ ] comparison of different llms review output on same code (this could be very cool!)
+- [X] load local repository
+- [X] enable openai review of code
+- [X] output in json
+- [X] output in html
+- [ ] packaging so user can either install via `cargo install` or download the binary.
+- [ ] output in pdf
+- [ ] tune the prompts for clarity and accuracy
+- [ ] GitHub Actions integration
+- [ ] enable private llm review of code (likely llama-based)
+- [ ] proper documentation
+- [ ] GitLab pipeline integration
+- [ ] enable google palm review of code
+- [ ] enable anthropic claud review of code
+- [ ] enable meta llama review of code
+- [ ] comparison of different llms review output on same code (this could be very cool!)
 
 ## code
 
