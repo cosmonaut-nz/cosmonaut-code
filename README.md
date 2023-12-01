@@ -1,7 +1,6 @@
 # >_ cosmonaut code
 
-<img src="assets/img/cosmonaut_logo_trans.png" width="12%" height="12%">
->_ we are cosmonaut
+<img src="assets/img/cosmonaut_logo_trans.png" width="12%" height="12%"> >_ we are cosmonaut
 
 [![Rust Check](https://github.com/cosmonaut-nz/cosmonaut-code/actions/workflows/rust-check.yml/badge.svg)](https://github.com/cosmonaut-nz/cosmonaut-code/actions/workflows/rust-check.yml)
 
@@ -132,17 +131,6 @@ status today is: *"it works, but it is not pretty or very user friendly."*
 
 ## outline tasks
 
-<table>
-  <thead>
-    <tr>
-      <th width="50%"> Current (version 0.2)</th>
-      <th width="50%">Next (version 1.0)</th>
-    </tr>
-  </thead>
-  <tbody>
-  <tr width="100%">
-<td>
-
 [X] load local repository
 
 [X] enable openai review of code
@@ -161,9 +149,6 @@ status today is: *"it works, but it is not pretty or very user friendly."*
 
 [ ] enable private llm review of code (likely llama-based)
 
-</td>
-<td>
-
 [ ] proper documentation
 
 [ ] GitLab pipeline integration
@@ -175,12 +160,6 @@ status today is: *"it works, but it is not pretty or very user friendly."*
 [ ] enable meta llama review of code
 
 [ ] comparison of different llms review output on same code (this could be very cool!)
-
-</td>
-</tr>
-
-  </tbody>
-</table>
 
 ## code
 
