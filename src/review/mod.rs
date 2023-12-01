@@ -1,16 +1,25 @@
-//! Handles the file in a software repository.
+//! Handles the review of a software repository. This is the most significant module in the application.
 //! Iterates over the folder structure, ignoring files or folders that are not relevant.
+//! Assesses the repository structure and file types to determine the predominant code language.
 //! Passes each relevant (code) file for review.
+//! Applies rules to the findings to produce a human readable summary and (set of) RAG statuses.
+//! Produces a human readable report.
 mod code;
 pub(crate) mod data;
 pub(crate) mod report;
 mod tools;
 use crate::provider::api::ProviderCompletionResponse;
 use crate::provider::prompts::PromptData;
-use crate::provider::review_code_file;
-use crate::review::code::{analyse_file_language, initialize_language_analysis, FileInfo};
-use crate::review::data::{FileReview, LanguageFileType, RAGStatus, RepositoryReview};
-use crate::review::report::OutputType;
+use crate::provider::{review_or_summarise, RequestType};
+use crate::review::code::{
+    analyse_file_language, calculate_rag_status_for_reviewed_file, initialize_language_analysis,
+    FileInfo,
+};
+use crate::review::data::{
+    FileReview, LanguageFileType, RAGStatus, RepositoryReview, ReviewBreakdown,
+    SecurityIssueBreakdown, Severity,
+};
+use crate::review::report::create_report;
 use crate::review::tools::{get_git_contributors, is_not_blacklisted};
 use crate::settings::{ProviderSettings, ReviewType, Settings};
 use chrono::{DateTime, Local, Utc};
@@ -20,7 +29,7 @@ use std::error::Error;
 use std::ffi::OsStr;
 use std::fmt;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use walkdir::{DirEntry, WalkDir};
 
@@ -44,6 +53,7 @@ pub(crate) async fn assess_codebase(
         Ok(path) => path,
         Err(e) => return Err(Box::new(e)),
     };
+    let repository_root_pathbuf = repository_root.to_path_buf();
 
     // TODO:    Lookup whether there is a README / README.md / README.rs / Readme.txt (and variations)
     //          If there is extract to a string and pass to LLM for summarising as RepositoryReview.repository_purpose
@@ -53,6 +63,20 @@ pub(crate) async fn assess_codebase(
     let mut overall_file_count: i32 = 0;
     let (lc, mut breakdown, rules, docs) = initialize_language_analysis();
 
+    let mut review_breakdown = ReviewBreakdown {
+        summary: String::new(),
+        security_issues: SecurityIssueBreakdown {
+            low: 0,
+            medium: 0,
+            high: 0,
+            critical: 0,
+            total: 0,
+        },
+        errors: 0,
+        improvements: 0,
+        documentation: None, // TODO: to implement the review of the state of documentation, etc.
+    };
+
     // Fetch files from non-blacklisted dirs (that are not symlinks)
     for entry in WalkDir::new(repository_root)
         .into_iter()
@@ -61,22 +85,24 @@ pub(crate) async fn assess_codebase(
         .filter(|e| e.file_type().is_file())
     {
         // This holds hard stats on the file, note that the LLM does attempt to fill in some of this, but often gets it wrong.
-        let result: Option<FileInfo> = get_file_info(&entry).and_then(|file_info| {
-            analyse_file_language(&file_info, &lc, &rules, &docs).map(
-                |(language, file_size, loc)| FileInfo {
-                    contents: file_info.contents,
-                    name: file_info.name,
-                    ext: file_info.ext,
-                    language: Some(language),
-                    file_size: Some(file_size),
-                    loc: Some(loc),
-                },
-            )
-        });
+        let result: Option<FileInfo> =
+            get_file_info(&entry, &repository_root_pathbuf).and_then(|file_info| {
+                analyse_file_language(&file_info, &lc, &rules, &docs).map(
+                    |(language, file_size, loc)| FileInfo {
+                        contents: file_info.contents,
+                        name: file_info.name,
+                        ext: file_info.ext,
+                        language: Some(language),
+                        file_size: Some(file_size),
+                        loc: Some(loc),
+                    },
+                )
+            });
+
         if let Some(file_info) = result {
             overall_file_count += 1;
             breakdown.add_usage(
-                &file_info.language.unwrap().name,
+                &file_info.language.clone().unwrap().name,
                 file_info.ext.to_str().unwrap_or_default(),
                 file_info.file_size.unwrap(),
                 file_info.loc.unwrap(),
@@ -108,11 +134,6 @@ pub(crate) async fn assess_codebase(
                     continue;
                 }
             };
-            // TODO:
-            //      1. update the stats from the LLM with the 'FileInfo' stats, earlier
-            //      2. count the number of errors, improvements and security issues and add to an overall tally
-            //      3. concat the 'FileReview' summary to an overall tally str and send to LLM for tidy RepositoryReview.summary
-            //      4. format the errors, improvements, and security_issues tally and add to summary
             match review_file(
                 &settings,
                 &file_name_str.to_string(),
@@ -120,7 +141,43 @@ pub(crate) async fn assess_codebase(
             )
             .await
             {
-                Ok(Some(reviewed_file)) => {
+                Ok(Some(mut reviewed_file)) => {
+                    review_breakdown.errors +=
+                        reviewed_file.errors.as_ref().map_or(0, Vec::len) as i32;
+                    review_breakdown.improvements +=
+                        reviewed_file.improvements.as_ref().map_or(0, Vec::len) as i32;
+
+                    if let Some(issues) = &reviewed_file.security_issues {
+                        for issue in issues {
+                            review_breakdown.security_issues.total += 1;
+                            match issue.severity {
+                                Severity::Low => review_breakdown.security_issues.low += 1,
+                                Severity::Medium => review_breakdown.security_issues.medium += 1,
+                                Severity::High => review_breakdown.security_issues.high += 1,
+                                Severity::Critical => {
+                                    review_breakdown.security_issues.critical += 1
+                                }
+                            }
+                        }
+                    }
+                    review_breakdown.summary.push_str(&reviewed_file.summary);
+                    review_breakdown.summary.push('\n');
+
+                    let file_statistics = LanguageFileType {
+                        language: file_info
+                            .language
+                            .as_ref()
+                            .map_or(String::new(), |lang| lang.to_string()),
+                        extension: file_info.ext.to_string_lossy().into_owned(),
+                        percentage: 0.0,
+                        loc: file_info.loc.unwrap_or(0),
+                        total_size: file_info.file_size.unwrap_or(0),
+                        file_count: 1,
+                    };
+                    reviewed_file.statistics = Some(file_statistics);
+                    reviewed_file.file_rag_status =
+                        calculate_rag_status_for_reviewed_file(&reviewed_file).unwrap_or_default();
+
                     review.add_file_review(reviewed_file);
                 }
                 Ok(None) => {
@@ -132,6 +189,16 @@ pub(crate) async fn assess_codebase(
             }
         }
     }
+    match summarise_review_breakdown(&settings, &review_breakdown).await {
+        Ok(Some(summary)) => {
+            review_breakdown.summary = summary;
+        }
+        Ok(None) => {
+            warn!("Summary response was returned as 'None'!");
+            review_breakdown.summary = String::new();
+        }
+        Err(e) => return Err(e),
+    };
     let now_utc: DateTime<Utc> = Utc::now();
     let now_local = now_utc.with_timezone(&Local);
     let review_date = now_local.format("%H:%M, %d/%m/%Y").to_string();
@@ -145,8 +212,8 @@ pub(crate) async fn assess_codebase(
         review.repository_type(Some("UNKNOWN".to_string()));
     }
     review.date(review_date);
-    review.repository_purpose("PURPOSE".to_string()); // TODO: Derive this from playing the README at the LLM
-    review.summary("SUMMARY".to_string()); // TODO: Pull together all the filereview summaries and send to LLM for condensing
+    review.repository_purpose(None); // TODO: Derive this from summarising the README by the LLM (not in MVP)
+    review.summary(Some(review_breakdown));
     review.repository_rag_status(get_overall_rag_for(&review));
     review.sum_num_files(Some(overall_file_count));
     review.sum_loc(Some(LanguageFileType::sum_lines_of_code(
@@ -160,26 +227,26 @@ pub(crate) async fn assess_codebase(
         provider.name, provider.service, provider.model
     )));
 
-    let report_output_type = OutputType::from_config(&settings);
-
-    let review_path = match report_output_type.create_report(&settings, &review) {
+    let review_path = match create_report(&settings, &review) {
         Ok(review_path) => review_path,
-        Err(e) => return Err(Box::new(e)),
+        Err(e) => return Err(e),
     };
 
     info!("TOTAL NUMBER OF FILES PROCESSED: {}", overall_file_count);
     Ok(review_path)
 }
 
-/// Pulls the text from a [`File`] and sends it to the LLM for review
-///
-/// This function takes two integer parameters and returns their sum.
-/// It demonstrates basic arithmetic operations in Rust.
+/// Takes the file contents of a file and sends it to the LLM for review
 ///
 /// # Parameters
 ///
-/// * `Settings` - A [`Settings`] that contains information for the LLM
-/// * `path` - The path the the file to process
+/// * `settings` - A [`Settings`] that contains information for the LLM
+/// * `code_file_path` - The path (as [`String`]) of the file to process
+/// * `code_file_contents` - The contents (as [`String`]) of the file to process
+///
+/// # Returns
+///
+/// * [`FileReview`]
 ///
 async fn review_file(
     settings: &Settings,
@@ -187,11 +254,11 @@ async fn review_file(
     code_file_contents: &String,
 ) -> Result<Option<FileReview>, Box<dyn std::error::Error>> {
     info!("Handling output_file: {}", code_file_path);
-    let provider = get_provider(settings);
-    let review_type = ReviewType::from_config(settings);
-    let mut prompt_data = match review_type {
-        ReviewType::General => PromptData::get_code_review_prompt(provider),
-        ReviewType::Security => PromptData::get_security_review_prompt(provider),
+    let provider: &ProviderSettings = get_provider(settings);
+    let review_type: ReviewType = ReviewType::from_config(settings);
+    let mut prompt_data: PromptData = match review_type {
+        ReviewType::General => PromptData::get_code_review_prompt(),
+        ReviewType::Security => PromptData::get_security_review_prompt(),
         ReviewType::CodeStats => {
             info!("CODE STATISTICS ONLY. Only running code statistics, no review run.");
             return Ok(None);
@@ -200,25 +267,69 @@ async fn review_file(
     let review_request: String = format!("File name: {}\n{}\n", code_file_path, code_file_contents);
     prompt_data.add_user_message_prompt(review_request);
 
-    let response: ProviderCompletionResponse =
-        review_code_file(settings, provider, prompt_data).await?;
-    let orig_response_json: String = response.choices[0].message.content.to_string();
-    match strip_artifacts_from(&orig_response_json) {
-        Ok(stripped_json) => match data::deserialize_file_review(&stripped_json) {
-            Ok(filereview_from_json) => Ok(Some(filereview_from_json)),
-            Err(e) => {
-                debug!(
-                    "ORIGINAL RESPONSE JSON FROM PROVIDER: {}",
-                    orig_response_json
-                );
-                error!(
-                    "Failed to deserialize: {:?} \nPossibly due to invalid escape character",
-                    &stripped_json
-                );
-                Err(format!("Failed to deserialize into FileReview: {}", e).into())
+    let mut attempts = 0;
+    let max_retries = provider.max_retries.unwrap_or(0);
+    // TODO sooo... deep with the nesting! Please fix me.
+    loop {
+        let response_result: Result<ProviderCompletionResponse, Box<dyn Error>> =
+            review_or_summarise(RequestType::Review, settings, provider, &prompt_data).await;
+        match response_result {
+            Ok(response) => {
+                let orig_response_json = response.choices[0].message.content.to_string();
+                match strip_artifacts_from(&orig_response_json) {
+                    Ok(stripped_json) => match data::deserialize_file_review(&stripped_json) {
+                        Ok(filereview_from_json) => return Ok(Some(filereview_from_json)),
+                        Err(e) => {
+                            error!("Failed to deserialize: {:?}, Possibly due to invalid escape character", &stripped_json);
+                            if attempts >= max_retries {
+                                return Err(format!(
+                                    "Failed to deserialize into FileReview: {}",
+                                    e
+                                )
+                                .into());
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        if attempts >= max_retries {
+                            return Err(format!("Error stripping JSON markers: {}", e).into());
+                        }
+                    }
+                }
             }
-        },
-        Err(e) => Err(format!("Error stripping JSON markers: {}", e).into()),
+            Err(e) => {
+                if attempts >= max_retries {
+                    return Err(e);
+                }
+            }
+        }
+
+        attempts += 1;
+        // TODO: Add a delay between retries
+        // tokio::time::sleep(Duration::from_millis(1000)).await;
+    }
+}
+
+async fn summarise_review_breakdown(
+    settings: &Settings,
+    review_breakdown: &ReviewBreakdown,
+) -> Result<Option<String>, Box<dyn std::error::Error>> {
+    let provider: &ProviderSettings = get_provider(settings);
+    let mut prompt_data = PromptData::get_overall_summary_prompt();
+
+    debug!("Input review summaries: {}", review_breakdown.summary);
+
+    let summary_request: String = format!(
+        "Concisely summarise the following: {}\n",
+        review_breakdown.summary
+    );
+    prompt_data.add_user_message_prompt(summary_request);
+
+    let response_result: Result<ProviderCompletionResponse, Box<dyn Error>> =
+        review_or_summarise(RequestType::Summarise, settings, provider, &prompt_data).await;
+    match response_result {
+        Ok(response) => Ok(Some(response.choices[0].message.content.to_string())),
+        Err(e) => Err(e),
     }
 }
 
@@ -244,50 +355,45 @@ fn validate_repository(repository_root: &Path) -> Result<&Path, PathError> {
     Ok(repository_root)
 }
 /// gets the content, filename and extension of a [`walkdir::DirEntry`]
-fn get_file_info(entry: &DirEntry) -> Option<FileInfo> {
+fn get_file_info(entry: &DirEntry, repo_root: &PathBuf) -> Option<FileInfo> {
     let path = entry.path();
+
+    // Calculate the relative path from the repository root
+    let relative_path = path.strip_prefix(repo_root).ok()?.to_path_buf();
+
     let contents = fs::read_to_string(path).ok()?;
-    let name = path.file_name()?.to_os_string();
+    let name = relative_path.to_str()?;
     let ext = path.extension()?.to_os_string();
 
     Some(FileInfo {
-        contents: Arc::new(OsStr::new(contents.as_str()).to_os_string()),
-        name: Arc::new(name),
+        contents: Arc::new(OsStr::new(&contents).to_os_string()),
+        name: Arc::new(OsStr::new(name).to_os_string()),
         ext: Arc::new(ext),
         language: None,
         file_size: None,
         loc: None,
     })
 }
+
 /// gives an overall [`RAGStatus`] for the passed [`RepositoryReview`]
-// TODO: This does not work in current form. Weighting may be wrong, but needs review and fix
 fn get_overall_rag_for(review: &RepositoryReview) -> RAGStatus {
-    let mut total_score = 0;
+    if let Some(breakdown) = &review.summary {
+        let num_total_files = review.file_reviews.len() as i32;
 
-    let num_file_reviews = review.file_reviews.len();
-    for file_review in &review.file_reviews {
-        let rag_weight = match file_review.get_file_rag_status() {
-            RAGStatus::Red => 3,
-            RAGStatus::Amber => 2,
-            RAGStatus::Green => 1,
-        };
-        let score = rag_weight
-            * (1 + file_review.get_errors().as_ref().map_or(0, |v| v.len())
-                + file_review
-                    .get_security_issues()
-                    .as_ref()
-                    .map_or(0, |v| v.len()));
-        total_score += score;
-    }
-    let average_score = total_score as f64 / num_file_reviews as f64;
+        if breakdown.security_issues.high > 0 || breakdown.security_issues.critical > 0 {
+            return RAGStatus::Red;
+        }
 
-    if average_score > 2.5 {
-        RAGStatus::Red
-    } else if average_score > 1.5 {
-        RAGStatus::Amber
-    } else {
-        RAGStatus::Green
+        let security_issues_ratio = breakdown.security_issues.total as f64 / num_total_files as f64;
+        let errors_ratio = breakdown.errors as f64 / num_total_files as f64;
+        let improvements_ratio = breakdown.improvements as f64 / num_total_files as f64;
+
+        if security_issues_ratio > 0.05 || errors_ratio > 0.08 || improvements_ratio > 0.60 {
+            return RAGStatus::Amber;
+        }
     }
+
+    RAGStatus::Green
 }
 
 // Gets the currently active provider. If there is a misconfiguration (i.e., a mangled `default.json`) then panics
@@ -298,11 +404,6 @@ fn get_provider(settings: &Settings) -> &crate::settings::ProviderSettings {
     provider
 }
 
-/// extracts the final part of the path
-///
-/// # Parameters
-///
-/// * `path_str` - a str representation of the path
 #[derive(Debug)]
 struct PathError {
     message: String,

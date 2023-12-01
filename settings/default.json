@@ -5,10 +5,9 @@
             "service": "gpt-4",
             "model": "gpt-4-1106-preview",
             "api_url": "https://api.openai.com/v1/chat/completions",
-            "max_retries": 5
+            "max_retries": 3
         }
     ],
-    "chosen_provider": null, 
     "default_provider": "OpenAI",
     "output_type": "html",
     "review_type": 1

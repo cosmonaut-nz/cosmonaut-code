@@ -1,124 +1,131 @@
 //! Produces reports in various formats according to [`OutputType`].
-use chrono::Local;
-use handlebars::Handlebars;
-use log::info;
-use serde::Deserialize;
+use super::data::RepositoryReview;
+use crate::settings::Settings;
+use chrono::DateTime;
+use chrono::{Local, Utc};
+use handlebars::{Context, Handlebars, Helper, HelperResult, Output, RenderContext};
+use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use chrono::DateTime;
-
-use crate::settings::Settings;
-
-use super::data::RepositoryReview;
-
 const HTML_TEMPLATE: &str = include_str!("./templates/report_template.html");
 
-/// Creates an HTML report based on the [`RepositoryReview`] passed in.
-/// Returns the path of the output report
-/// TODO Not very DRY this and [`create_json_report`]
-pub(crate) fn create_html_report(
+/// Creates and outputs a report for the [`Settings`] and [`RepositoryReview`] passed in
+/// The function the renders according to [`OutputType`]
+pub(crate) fn create_report(
     settings: &Settings,
     repository_review: &RepositoryReview,
 ) -> Result<String, Box<dyn std::error::Error>> {
+    match settings.output_type {
+        OutputType::Json => create_specific_report(repository_review, render_json, settings),
+        OutputType::Html => create_specific_report(repository_review, render_html, settings),
+        OutputType::Pdf => Err(Box::new(ReportError::NotImplemented)),
+    }
+}
+
+/// There may be multiple report formats, so here we handle according, according to [`OutputType`]
+fn create_specific_report<F>(
+    repository_review: &RepositoryReview,
+    render_fn: F,
+    settings: &Settings,
+) -> Result<String, Box<dyn std::error::Error>>
+where
+    F: Fn(&RepositoryReview, &Settings) -> Result<String, Box<dyn std::error::Error>>,
+{
     let output_dir: PathBuf = PathBuf::from(&settings.report_output_path);
     let output_file_path: PathBuf = create_named_timestamped_filename(
         &output_dir,
         &repository_review.repository_name,
-        &settings.output_type,
+        &settings.output_type.to_string(),
         Local::now(),
     );
     let report_filepath = output_file_path.clone().to_string_lossy().into_owned();
 
+    let output_content = render_fn(repository_review, settings)?;
+
     let mut output_file = fs::File::create(output_file_path)
         .map_err(|e| format!("Error creating output file: {}", e))?;
+    output_file
+        .write_all(output_content.as_bytes())
+        .map_err(|e| format!("Error writing to output file: {}", e))?;
 
+    Ok(report_filepath)
+}
+
+fn render_json(
+    repository_review: &RepositoryReview,
+    _settings: &Settings,
+) -> Result<String, Box<dyn std::error::Error>> {
+    serde_json::to_string_pretty(repository_review).map_err(|e| {
+        Box::new(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("Error serializing review: {}", e),
+        )) as Box<dyn std::error::Error>
+    })
+}
+
+fn render_html(
+    repository_review: &RepositoryReview,
+    _settings: &Settings,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let current_year = Utc::now().format("%Y").to_string();
     let mut handlebars = Handlebars::new();
-
+    handlebars.register_helper("format_percentage", Box::new(format_percentage));
     handlebars
         .register_template_string("repository review", HTML_TEMPLATE)
         .unwrap();
-
-    let rendered_html = handlebars
-        .render("repository review", &repository_review)
-        .unwrap();
-
-    output_file
-        .write_all(rendered_html.as_bytes())
-        .map_err(|e| format!("Error writing to output file: {}", e))?;
-
-    Ok(report_filepath)
-}
-/// Creates a JSON-based report based on the [`RepositoryReview`] passed in.
-/// Returns the path of the output report
-/// TODO Not very DRY this and [`create_html_report`]
-pub(crate) fn create_json_report(
-    settings: &Settings,
-    repository_review: &RepositoryReview,
-) -> Result<String, Box<dyn std::error::Error>> {
-    let output_dir: PathBuf = PathBuf::from(&settings.report_output_path);
-    let output_file_path: PathBuf = create_named_timestamped_filename(
-        &output_dir,
-        &repository_review.repository_name,
-        &settings.output_type,
-        Local::now(),
-    );
-    let report_filepath = output_file_path.clone().to_string_lossy().into_owned();
-
-    let review_json = serde_json::to_string_pretty(&repository_review)
-        .map_err(|e| format!("Error serializing review: {}", e))?;
-
-    let mut output_file = fs::File::create(output_file_path)
-        .map_err(|e| format!("Error creating output file: {}", e))?;
-    output_file
-        .write_all(review_json.as_bytes())
-        .map_err(|e| format!("Error writing to output file: {}", e))?;
-
-    Ok(report_filepath)
+    let context = ReportContext {
+        repository_review,
+        current_year,
+    };
+    handlebars
+        .render("repository review", &context)
+        .map_err(|e| {
+            Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Error rendering HTML: {}", e),
+            )) as Box<dyn std::error::Error>
+        })
 }
 
-#[derive(Debug, Deserialize, Default, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Default, PartialEq)]
 pub(crate) enum OutputType {
+    #[serde(rename = "json")]
     #[default]
     Json,
+    #[serde(rename = "pdf")]
     Pdf,
+    #[serde(rename = "html")]
     Html,
 }
-/// We offer three types of output:
-/// json. A review report in raw JSON
-/// pdf. A review report in PDF format
-/// html. A review report in HTML format
-impl OutputType {
-    pub(crate) fn from_config(settings: &Settings) -> Self {
-        let output_type = settings.output_type.to_string();
-        match output_type.as_str() {
-            "json" => OutputType::Json,
-            "pdf" => OutputType::Pdf,
-            "html" => OutputType::Html,
-            _ => {
-                info!("Using default: {:?}", OutputType::default());
-                OutputType::default()
+impl fmt::Display for OutputType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                OutputType::Json => "json",
+                OutputType::Pdf => "pdf",
+                OutputType::Html => "html",
             }
-        }
+        )
     }
-    pub(crate) fn create_report(
-        &self,
-        settings: &Settings,
-        review: &RepositoryReview,
-    ) -> Result<String, ReportError> {
-        match self {
-            OutputType::Json => {
-                create_json_report(settings, review).map_err(|_| ReportError::NotImplemented)
-            }
-            OutputType::Pdf => Err(ReportError::NotImplemented),
-            OutputType::Html => {
-                create_html_report(settings, review).map_err(|_| ReportError::NotImplemented)
-            }
-        }
-    }
+}
+
+/// Handlebars Helper to round a `f64` to two decimal places
+fn format_percentage(
+    h: &Helper<'_, '_>,
+    _: &Handlebars<'_>,
+    _: &Context,
+    _: &mut RenderContext<'_, '_>,
+    out: &mut dyn Output,
+) -> HelperResult {
+    let param = h.param(0).and_then(|v| v.value().as_f64()).unwrap_or(0.0);
+    write!(out, "{:.2}", param)?;
+    Ok(())
 }
 
 /// Creates a timestamped file
@@ -140,6 +147,12 @@ fn create_named_timestamped_filename(
         "{}-{}.{}",
         repo_name, formatted_timestamp, file_extension
     ))
+}
+
+#[derive(Serialize)]
+pub(crate) struct ReportContext<'a> {
+    pub repository_review: &'a RepositoryReview,
+    pub current_year: String,
 }
 
 #[derive(Debug)]

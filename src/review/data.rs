@@ -20,13 +20,13 @@ pub(crate) struct RepositoryReview {
     generative_ai_service_and_model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     repository_type: Option<String>, // The type of repository, e.g., Java, .Net, etc.
-    date: String,                               // Date of execution (formatted)
-    repository_purpose: String, // Derive from README, if present, else allow user entry in UI
-    summary: String,            // A roll up of the findings
-    repository_rag_status: RAGStatus, // In {Red, Amber, Green}
-    sum_loc: Option<i64>,       // Total lines of code
-    sum_num_files: Option<i32>, // Total number of files
-    contributors: Vec<Contributor>, // List of contributors to the codebase from commit history
+    date: String,                                // Date of execution (formatted)
+    repository_purpose: Option<String>, // Derive from README, if present, else allow user entry in UI
+    pub(crate) summary: Option<ReviewBreakdown>, // A roll up of the findings
+    repository_rag_status: RAGStatus,   // In {Red, Amber, Green}
+    sum_loc: Option<i64>,               // Total lines of code
+    sum_num_files: Option<i32>,         // Total number of files
+    contributors: Vec<Contributor>,     // List of contributors to the codebase from commit history
     language_file_types: Vec<LanguageFileType>, // The languages (as a %) found in the repository (a la GitHub)
     pub(crate) file_reviews: Vec<FileReview>,   // Each of the code files
 }
@@ -37,8 +37,8 @@ impl RepositoryReview {
             generative_ai_service_and_model: None,
             repository_type: None,
             date: String::new(),
-            repository_purpose: String::new(),
-            summary: String::new(),
+            repository_purpose: None,
+            summary: None,
             repository_rag_status: RAGStatus::Green,
             sum_loc: None,
             sum_num_files: None,
@@ -64,8 +64,8 @@ impl_builder_methods!(
     generative_ai_service_and_model: Option<String>,
     repository_type: Option<String>,
     date: String,
-    repository_purpose: String,
-    summary: String,
+    repository_purpose: Option<String>,
+    summary: Option<ReviewBreakdown>,
     repository_rag_status: RAGStatus,
     sum_loc: Option<i64>,
     sum_num_files: Option<i32>,
@@ -123,16 +123,48 @@ pub(crate) struct Improvement {
     example: String,
 }
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
-pub(crate) struct SecurityIssue {
-    code: String,
-    threat: String,
-    mitigation: String,
-}
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub(crate) struct Error {
     code: String,
     issue: String,
     resolution: String,
+}
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+pub(crate) struct SecurityIssue {
+    pub(crate) severity: Severity,
+    pub(crate) code: String,
+    pub(crate) threat: String,
+    pub(crate) mitigation: String,
+}
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+pub(crate) enum Severity {
+    Low,
+    Medium,
+    High,
+    Critical,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+pub(crate) struct ReviewBreakdown {
+    pub(crate) summary: String,
+    pub(crate) security_issues: SecurityIssueBreakdown,
+    pub(crate) errors: i32,
+    pub(crate) improvements: i32,
+    pub(crate) documentation: Option<Documentation>,
+}
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+pub(crate) struct SecurityIssueBreakdown {
+    pub(crate) low: i32,
+    pub(crate) medium: i32,
+    pub(crate) high: i32,
+    pub(crate) critical: i32,
+    pub(crate) total: i32,
+}
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+pub(crate) enum Documentation {
+    None,
+    Some,
+    Good,
+    Excellent,
 }
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub(crate) struct LanguageFileType {
@@ -167,6 +199,11 @@ impl LanguageFileType {
         }
 
         predominant_language
+    }
+    /// Used in the HTML template
+    #[allow(dead_code)]
+    pub(crate) fn formatted_percentage(&self) -> String {
+        format!("{:.2}", self.percentage)
     }
 }
 

@@ -14,6 +14,8 @@ use std::{
     sync::Arc,
 };
 
+use super::data::{FileReview, RAGStatus, Severity};
+
 pub(crate) mod predefined {
     include!(concat!(env!("OUT_DIR"), "/languages.rs"));
     include!(concat!(env!("OUT_DIR"), "/heuristics.rs"));
@@ -49,7 +51,7 @@ pub(crate) fn initialize_language_analysis() -> (
 
     (lc, breakdown, rules, docs)
 }
-
+#[derive(Debug)]
 pub(crate) struct FileInfo {
     pub(crate) contents: Arc<OsString>,
     pub(crate) name: Arc<OsString>,
@@ -106,6 +108,61 @@ pub(crate) fn analyse_file_language(
     };
 
     Some((language.clone(), file_size, loc))
+}
+
+/// Calculates the RAG status for a [`FileReview`] on the number of errors, improvements and security_issues, according to lines of code
+/// Green: <12% improvements per loc of code;
+/// Amber: <35% improvements, 7% errors OR 1% security_issues per loc of code;
+/// Red: worse;
+pub(crate) fn calculate_rag_status_for_reviewed_file(
+    reviewed_file: &FileReview,
+) -> Option<RAGStatus> {
+    let errors_count = reviewed_file
+        .errors
+        .as_ref()
+        .map_or(0, |errors| errors.len());
+    let improvements_count = reviewed_file
+        .improvements
+        .as_ref()
+        .map_or(0, |improvements| improvements.len());
+    let security_issues_count = reviewed_file
+        .security_issues
+        .as_ref()
+        .map_or(0, |issues| issues.len());
+    let loc = reviewed_file
+        .statistics
+        .as_ref()
+        .map_or(0, |statistics| statistics.loc);
+
+    let error_ratio = errors_count as f64 / loc as f64;
+    let security_issues_ratio = security_issues_count as f64 / loc as f64;
+    let improvements_ratio = improvements_count as f64 / loc as f64;
+
+    let green_error_threshold = 0.07; // 7% of loc
+    let amber_error_threshold = 0.18; // 18% of loc
+    let green_improvement_threshold = 0.15; // 15% of loc
+    let amber_improvement_threshold = 0.40; // 40% of loc
+
+    if let Some(security_issues) = &reviewed_file.security_issues {
+        for issue in security_issues {
+            match issue.severity {
+                Severity::High | Severity::Critical => return Some(RAGStatus::Red),
+                _ => continue,
+            }
+        }
+    }
+    if error_ratio <= green_error_threshold
+        && security_issues_ratio <= 0.05 // 5% of loc
+        && improvements_ratio <= green_improvement_threshold
+    {
+        return Some(RAGStatus::Green);
+    } else if error_ratio <= amber_error_threshold
+        && security_issues_ratio <= 0.12 // 12% of loc
+        && improvements_ratio <= amber_improvement_threshold
+    {
+        return Some(RAGStatus::Amber);
+    }
+    Some(RAGStatus::Red)
 }
 
 fn get_file_contents_size(file_contents: impl AsRef<OsStr>) -> Result<u64, &'static str> {
