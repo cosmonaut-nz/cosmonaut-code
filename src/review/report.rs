@@ -74,6 +74,8 @@ fn render_html(
     let current_year = Utc::now().format("%Y").to_string();
     let mut handlebars = Handlebars::new();
     handlebars.register_helper("format_percentage", Box::new(format_percentage));
+    handlebars.register_helper("newline_to_br", Box::new(newline_to_br));
+
     handlebars
         .register_template_string("repository review", HTML_TEMPLATE)
         .unwrap();
@@ -115,7 +117,7 @@ impl fmt::Display for OutputType {
     }
 }
 
-/// Handlebars Helper to round a `f64` to two decimal places
+/// Handlebars [`Helper`] to round a `f64` to two decimal places
 fn format_percentage(
     h: &Helper<'_, '_>,
     _: &Handlebars<'_>,
@@ -125,6 +127,19 @@ fn format_percentage(
 ) -> HelperResult {
     let param = h.param(0).and_then(|v| v.value().as_f64()).unwrap_or(0.0);
     write!(out, "{:.2}", param)?;
+    Ok(())
+}
+/// Handlebars [`Helper`] to render a '\n' character to "<br" HTML
+fn newline_to_br(
+    h: &Helper<'_, '_>,
+    _: &Handlebars,
+    _: &Context,
+    _: &mut RenderContext<'_, '_>,
+    out: &mut dyn Output,
+) -> HelperResult {
+    let text = h.param(0).and_then(|v| v.value().as_str()).unwrap_or("");
+    let replaced_text = text.replace('\n', "<br>");
+    write!(out, "{}", replaced_text)?;
     Ok(())
 }
 

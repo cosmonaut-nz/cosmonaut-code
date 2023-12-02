@@ -129,7 +129,7 @@
             <p>Total number of files: {{repository_review.sum_num_files}}</p>
             {{#if repository_review.summary.summary}}
             <div class="detailed-section">
-                <p style="font-size: smaller;">{{repository_review.summary.summary}}</p>
+                <p style="font-size: smaller;">{{newline_to_br repository_review.summary.summary}}</p>
             </div>
             {{/if}}
             <div class="detailed-section">
@@ -253,7 +253,8 @@
     </script>
 </body>
 <footer>
-    <p><em style="font-size: smaller;">Copyright &#169; Cosmonaut (New Zealand) Ltd, {{current_year}}.</em></p>
+    <p style="font-size: smaller;">&gt;_ we are cosmonaut. <em>copyright &#169; cosmonaut (new zealand) ltd,
+            {{current_year}}.</em></p>
 </footer>
 
 </html>

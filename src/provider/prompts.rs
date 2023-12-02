@@ -43,7 +43,8 @@ impl PromptData {
                 ProviderCompletionMessage {
                     role: ProviderMessageRole::System,
                     content: r#"Focus on identifying critical errors, best practice violations, and security vulnerabilities.
-                                Do not generalise; you link your statements to the code; you must state 'is' or 'will', not 'may' or 'shall'; it must be specific to the text of the code you are reviewing.
+                                Do not generalise; you link your statements to the code; you must state 'is' or 'will', not 'may' or 'shall'; 
+                                it must be specific to the text of the code you are reviewing.
                                 Exclude trivial issues like formatting errors or TODO comments. Use your expertise to provide insightful and actionable feedback.
                             "#.to_string(),
                 },
@@ -55,6 +56,7 @@ impl PromptData {
                     role: ProviderMessageRole::System,
                     content: FILE_REVIEW_SCHEMA.to_string(),
                 },
+                // TODO: add in fake "replay" to show previous user/assistant interactions and quality of output on a file
             ],
         }
     }
@@ -81,6 +83,7 @@ impl PromptData {
                     role: ProviderMessageRole::System,
                     content: FILE_REVIEW_SCHEMA.to_string(),
                 },
+                // TODO: add in fake "replay" to show previous user/assistant interactions and quality of output on a file
             ],
         }
     }
@@ -114,11 +117,40 @@ impl PromptData {
                 },
                 ProviderCompletionMessage {
                     role: ProviderMessageRole::System,
-                    content: r#"Keep the summary very brief and concise. Only give significant information, such an overview of security and code quality."#.to_string(),
+                    content: r#"Use excellent grammar. Keep the summary very brief and concise. Only give significant information: general code quality; an overview of security; and overview of code quality. 
+                                Do not mention file names."#.to_string(),
                 },
                 ProviderCompletionMessage {
                     role: ProviderMessageRole::System,
-                    content: r#"Format your output in a pretty manner, ensuring that it includes clear paragraphs and indented bullets or item numbering, if present."#.to_string(),
+                    content: r"Do not use Markdown as output. 
+                                Output in plaintext only. 
+                                Always add newline characters (i.e., '\n') for paragraphs, indented bullets or item numbering.".to_string(),
+                }, // Fake "replaying" previous interactions to show the level of summary.
+                ProviderCompletionMessage {
+                    role: ProviderMessageRole::User,
+                    content: r#"Concisely summarise the following: 
+                                The code in 'build.rs' does not appear to contain critical errors or security issues. 
+                                The use of imports could be refined, and the string conversion for static strings could be optimized for better code quality and readability.
+                                The code contains a high severity security issue related to the potential leaking of API keys, and a couple of errors that impact the clarity and security of the configuration data handling. 
+                                The code does not adhere strictly to the best practices regarding secure configuration management. 
+                                An improvement is suggested to enhance the security by modifying the Debug trait implementation for sensitive data.
+                                The Rust source code provides prompt templates for a chat-based language model. There are no critical errors or security vulnerabilities within the code. 
+                                Minor improvements suggested include handling JSON schemas and multi-line strings separately from the code, 
+                                renaming a public function to adhere to naming conventions, and enhancing a documentation comment for clarity.
+                                The code could lead to security vulnerabilities due to the exposure of sensitive API keys and lack of a backoff strategy in API request retries. 
+                                Code improvements suggested include better error handling patterns, reorganizing the enumeration definition into its separate module, 
+                                and deriving the Debug trait for better logging support. The use of wildcard imports should be replaced with specific imports for clarity and maintainability.
+                                The code review did not find any critical errors or security issues. Suggested improvements focus on adding documentation, implementing better error handling, 
+                                and refactoring the trait for conversion functions to accept iterators for greater flexibility.
+                                "#.to_string(),
+                },
+                ProviderCompletionMessage {
+                    role: ProviderMessageRole::Assistant,
+                    content: r#"The codebase demonstrates a satisfactory level of code quality with no critical errors or security issues found. 
+                                However, security-wise, there's a concerning issue as the code risks leaking API keys, which is a high severity vulnerability.
+                                There is room for optimization and refinement to enhance code quality and readability. Configuration data handling could be improved, 
+                                as it does not fully comply with secure configuration management best practices. 
+                                Significant improvements to documentation for higher clarity is desired."#.to_string(),
                 },
             ],
         }

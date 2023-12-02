@@ -150,7 +150,7 @@ impl Settings {
                         .required(false)
                         .format(FileFormat::Json),
                 )
-            } else { // TODO: Remove this to just use env variables
+            } else { // TODO: Remove this to just use env variables - left in as it should flag as a security vuln, at least high sev
                 let formatter: StringFormatter = &|s| {
                     let mut c = s.chars();
                     match c.next() {
@@ -164,7 +164,6 @@ impl Settings {
                 // Prompt user for settings via commandline
                 let repository_path = Text::new("Enter the path to a valid git repository").prompt();
                 let report_path = Text::new("Enter the path to where you'd like the report").prompt();
-                // TODO Drop down for configured providers
                 let provider_name = Text::new("Enter the provider you'd like to use").prompt();
                 let api_key = Text::new("Enter your provider API key").with_formatter(formatter).prompt();
 
