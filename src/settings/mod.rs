@@ -9,7 +9,6 @@ use config::FileFormat;
 use config::{Config, ConfigError, File};
 use inquire::formatter::StringFormatter;
 use inquire::Text;
-use log::info;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fmt;
@@ -29,36 +28,34 @@ pub(crate) struct Settings {
     pub(crate) chosen_provider: Option<String>,
     pub(crate) default_provider: String,
     pub(crate) output_type: OutputType,
-    pub(crate) review_type: i32,
+    pub(crate) review_type: ReviewType,
     pub(crate) repository_path: String,
     pub(crate) report_output_path: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) max_file_count: Option<i32>,
+    pub(crate) developer_mode: Option<DeveloperMode>,
     pub(crate) sensitive: SensitiveSettings,
 }
 
-#[derive(Debug, Deserialize, Default, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Default, PartialEq)]
 pub(crate) enum ReviewType {
+    #[serde(rename = "general")]
     #[default]
     General,
+    #[serde(rename = "security")]
     Security,
+    #[serde(rename = "stats")]
     CodeStats,
 }
-/// We offer two types of review:
-/// 1. A full general review of the code
-/// 2. A review focussed on security only
-impl ReviewType {
-    pub(crate) fn from_config(settings: &Settings) -> Self {
-        match settings.review_type {
-            1 => ReviewType::General,
-            2 => ReviewType::Security,
-            3 => ReviewType::CodeStats,
-            _ => {
-                info!("Using default: {:?}", ReviewType::default());
-                ReviewType::default()
-            }
-        }
-    }
+
+/// An [`Option`]al set of settings to control the output of the programme for development purposes
+/// #Fields
+///
+/// - 'max_file_count': To improve development feedback loop time on big repos, allows sampling.
+/// - 'verbose_data_output': a flag to produce a full 'json' file, even if the [`OutputType`] is 'html' or other
+#[derive(Serialize, Deserialize, PartialEq)]
+pub(crate) struct DeveloperMode {
+    pub(crate) max_file_count: Option<i32>,
+    pub(crate) verbose_data_output: bool,
 }
 
 #[derive(Serialize, Deserialize, PartialEq)]
@@ -181,7 +178,6 @@ impl Settings {
 
         config.try_deserialize::<Settings>()
     }
-
     /// Function gets either the chosen provider or default provider, or gives a ProviderError
     pub(crate) fn get_active_provider(&self) -> Result<&ProviderSettings, ProviderError> {
         let provider_name = self
@@ -192,6 +188,9 @@ impl Settings {
             .iter()
             .find(|p| p.name == *provider_name)
             .ok_or_else(|| ProviderError::NotFound(provider_name.clone()))
+    }
+    pub(crate) fn is_developer_mode(&self) -> bool {
+        self.developer_mode.is_some()
     }
 }
 /// Custom Debug implementation for ProviderSettings
@@ -245,7 +244,6 @@ impl fmt::Display for SensitiveSettings {
     }
 }
 /// Locking up the APIKey to prevent accidental display
-/// Note: `fn new(key: String) -> Self` is used by Settings::new, however the compiler moans, so added dead_code allowance
 impl APIKey {
     pub(crate) fn use_key<T, F>(&self, f: F) -> T
     where
@@ -314,7 +312,7 @@ mod tests {
             r#"{{
                 "default_provider": "TestProvider",
                 "output_type": "json",
-                "review_type": 1,
+                "review_type": "general",
                 "repository_path": "test/repo/path",
                 "report_output_path": "test/report/path",
                 "sensitive": {{
@@ -330,7 +328,7 @@ mod tests {
 
         assert_eq!(settings.default_provider, "TestProvider");
         assert_eq!(settings.output_type, OutputType::Json);
-        assert_eq!(settings.review_type, 1);
+        assert_eq!(settings.review_type, ReviewType::General);
         assert_eq!(settings.repository_path, "test/repo/path");
         assert_eq!(settings.report_output_path, "test/report/path");
         assert_eq!(settings.sensitive.api_key.0, "testkey");
@@ -338,6 +336,37 @@ mod tests {
         dir.close().unwrap();
 
         std::env::remove_var(ENV_SENSITIVE_SETTINGS_PATH);
+    }
+
+    #[test]
+    fn test_loading_developer_mode_from_json() {
+        let json_data = r#"
+        {
+            "providers": [],
+            "chosen_provider": null,
+            "default_provider": "SomeProvider",
+            "output_type": "pdf",
+            "review_type": "general",
+            "repository_path": "some/path",
+            "report_output_path": "some/output/path",
+            "sensitive": { 
+                "api_key": "some_key_value",
+                "org_id": "some_org_value",
+                "org_name": "some_org_name_value" 
+            },
+            "developer_mode": {
+                "max_file_count": 10,
+                "verbose_data_output": true
+            }
+        }
+        "#;
+
+        let settings: Settings =
+            serde_json::from_str(json_data).expect("JSON was not well-formatted");
+        assert!(settings.developer_mode.is_some());
+        let dev_settings = settings.developer_mode.unwrap();
+        assert_eq!(dev_settings.max_file_count, Some(10));
+        assert!(dev_settings.verbose_data_output);
     }
 
     #[test]
@@ -355,15 +384,15 @@ mod tests {
             chosen_provider: None,
             default_provider: "OpenAI".to_string(),
             output_type: OutputType::Json,
-            review_type: 1,
+            review_type: ReviewType::General,
             repository_path: "path/to/repo".to_string(),
             report_output_path: "path/to/report".to_string(),
-            max_file_count: None,
             sensitive: SensitiveSettings {
                 api_key: APIKey("secret".to_string()),
                 org_id: None,
                 org_name: None,
             },
+            developer_mode: None,
         };
         let provider = settings.get_active_provider().unwrap();
         assert_eq!(provider.name, "OpenAI");

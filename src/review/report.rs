@@ -19,18 +19,52 @@ pub(crate) fn create_report(
     settings: &Settings,
     repository_review: &RepositoryReview,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    match settings.output_type {
-        OutputType::Json => create_specific_report(repository_review, render_json, settings),
-        OutputType::Html => create_specific_report(repository_review, render_html, settings),
-        OutputType::Pdf => Err(Box::new(ReportError::NotImplemented)),
+    let mut report_paths = Vec::new();
+
+    let render_functions = [
+        (
+            "json",
+            render_json
+                as fn(&RepositoryReview, &Settings) -> Result<String, Box<dyn std::error::Error>>,
+        ),
+        (
+            "html",
+            render_html
+                as fn(&RepositoryReview, &Settings) -> Result<String, Box<dyn std::error::Error>>,
+        ),
+        (
+            "pdf",
+            render_pdf
+                as fn(&RepositoryReview, &Settings) -> Result<String, Box<dyn std::error::Error>>,
+        ),
+    ];
+
+    for (file_extension, render_fn) in render_functions {
+        if settings
+            .developer_mode
+            .as_ref()
+            .map_or(false, |dev| dev.verbose_data_output)
+            || settings.output_type.to_string() == file_extension
+        {
+            match create_specific_report(repository_review, render_fn, settings, file_extension) {
+                Ok(path) => report_paths.push(path),
+                Err(_) if file_extension == "pdf" => {
+                    log::warn!("PDF report generation is not implemented yet.");
+                }
+                Err(_) => (),
+            }
+        }
     }
+
+    Ok(report_paths.join(", "))
 }
 
-/// There may be multiple report formats, so here we handle according, according to [`OutputType`]
+/// There may be multiple report formats, so here we handle according, according to `render_fn`
 fn create_specific_report<F>(
     repository_review: &RepositoryReview,
     render_fn: F,
     settings: &Settings,
+    file_extension: &str,
 ) -> Result<String, Box<dyn std::error::Error>>
 where
     F: Fn(&RepositoryReview, &Settings) -> Result<String, Box<dyn std::error::Error>>,
@@ -39,7 +73,7 @@ where
     let output_file_path: PathBuf = create_named_timestamped_filename(
         &output_dir,
         &repository_review.repository_name,
-        &settings.output_type.to_string(),
+        file_extension,
         Local::now(),
     );
     let report_filepath = output_file_path.clone().to_string_lossy().into_owned();
@@ -93,7 +127,15 @@ fn render_html(
         })
 }
 
-#[derive(Debug, Serialize, Deserialize, Default, PartialEq)]
+fn render_pdf(
+    _repository_review: &RepositoryReview,
+    _settings: &Settings,
+) -> Result<String, Box<dyn std::error::Error>> {
+    // TODO: Not implemented
+    Err(Box::new(ReportError::NotImplemented))
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub(crate) enum OutputType {
     #[serde(rename = "json")]
     #[default]
@@ -102,6 +144,8 @@ pub(crate) enum OutputType {
     Pdf,
     #[serde(rename = "html")]
     Html,
+    #[serde(rename = "all")]
+    All,
 }
 impl fmt::Display for OutputType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -112,6 +156,7 @@ impl fmt::Display for OutputType {
                 OutputType::Json => "json",
                 OutputType::Pdf => "pdf",
                 OutputType::Html => "html",
+                OutputType::All => "all",
             }
         )
     }
