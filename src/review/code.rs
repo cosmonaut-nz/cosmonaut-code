@@ -111,9 +111,6 @@ pub(crate) fn analyse_file_language(
 }
 
 /// Calculates the RAG status for a [`FileReview`] on the number of errors, improvements and security_issues, according to lines of code
-/// Green: <12% improvements per loc of code;
-/// Amber: <35% improvements, 7% errors OR 1% security_issues per loc of code;
-/// Red: worse;
 pub(crate) fn calculate_rag_status_for_reviewed_file(
     reviewed_file: &FileReview,
 ) -> Option<RAGStatus> {

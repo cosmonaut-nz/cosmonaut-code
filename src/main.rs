@@ -32,7 +32,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let report_output = review::assess_codebase(settings).await?;
 
     info!("CODE REVIEW COMPLETE. See the output report for details.");
-    if let Err(e) = open_file(&report_output) {
+    if let Err(e) = open_file_or_files(&report_output) {
         error!("Failed to open file: {}", e);
     }
 
@@ -52,17 +52,19 @@ fn print_exec_duration(duration: Duration) {
         minutes, seconds, millis
     );
 }
-fn open_file(file_path: &str) -> std::io::Result<()> {
-    if cfg!(target_os = "windows") {
-        Command::new("cmd")
-            .args(["/C", "start", file_path])
-            .spawn()?;
-    } else if cfg!(target_os = "macos") {
-        Command::new("open").arg(file_path).spawn()?;
-    } else if cfg!(target_os = "linux") {
-        Command::new("xdg-open").arg(file_path).spawn()?;
-    } else {
-        println!("Unsupported OS");
+fn open_file_or_files(file_paths: &str) -> std::io::Result<()> {
+    for file_path in file_paths.split(',') {
+        if cfg!(target_os = "windows") {
+            Command::new("cmd")
+                .args(["/C", "start", file_path.trim()])
+                .spawn()?;
+        } else if cfg!(target_os = "macos") {
+            Command::new("open").arg(file_path.trim()).spawn()?;
+        } else if cfg!(target_os = "linux") {
+            Command::new("xdg-open").arg(file_path.trim()).spawn()?;
+        } else {
+            println!("Unsupported OS");
+        }
     }
 
     Ok(())

@@ -10,5 +10,5 @@
     ],
     "default_provider": "OpenAI",
     "output_type": "html",
-    "review_type": 1
+    "review_type": "general"
 }

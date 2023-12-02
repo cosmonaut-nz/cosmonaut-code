@@ -108,13 +108,17 @@ pub(crate) async fn assess_codebase(
                 file_info.file_size.unwrap(),
                 file_info.loc.unwrap(),
             );
-            // To improve development feedback loop time on big repos, allows sampling
+
             #[cfg(debug_assertions)]
-            if let Some(max_count) = settings.max_file_count {
-                if overall_file_count > max_count {
-                    continue;
+            if settings.is_developer_mode() {
+                if let Some(max_count) = settings.developer_mode.as_ref().unwrap().max_file_count {
+                    // To make JSON config easier, a negative max_file_count skips
+                    if max_count >= 0 && overall_file_count > max_count {
+                        continue;
+                    }
                 }
             }
+
             let contents_str = match file_info.contents.to_str() {
                 Some(contents) => contents,
                 None => {
@@ -190,16 +194,18 @@ pub(crate) async fn assess_codebase(
             }
         }
     }
-    match summarise_review_breakdown(&settings, &review_breakdown).await {
-        Ok(Some(summary)) => {
-            review_breakdown.summary = summary;
-        }
-        Ok(None) => {
-            warn!("Summary response was returned as 'None'!");
-            review_breakdown.summary = String::new();
-        }
-        Err(e) => return Err(e),
-    };
+    if !review.file_reviews.is_empty() {
+        match summarise_review_breakdown(&settings, &review_breakdown).await {
+            Ok(Some(summary)) => {
+                review_breakdown.summary = summary;
+            }
+            Ok(None) => {
+                warn!("Summary response was returned as 'None'!");
+                review_breakdown.summary = String::new();
+            }
+            Err(e) => return Err(e),
+        };
+    }
     let now_utc: DateTime<Utc> = Utc::now();
     let now_local = now_utc.with_timezone(&Local);
     let review_date = now_local.format("%H:%M, %d/%m/%Y").to_string();
@@ -224,7 +230,7 @@ pub(crate) async fn assess_codebase(
     review.language_file_types(breakdown.to_language_file_types());
     let provider: &ProviderSettings = get_provider(&settings);
     review.generative_ai_service_and_model(Some(format!(
-        "{}, service: {}, model: {}",
+        "provider: {}, service: {}, model: {}",
         provider.name, provider.service, provider.model
     )));
 
@@ -256,8 +262,7 @@ async fn review_file(
 ) -> Result<Option<FileReview>, Box<dyn std::error::Error>> {
     info!("Reviewing file: {}", code_file_path);
     let provider: &ProviderSettings = get_provider(settings);
-    let review_type: ReviewType = ReviewType::from_config(settings);
-    let mut prompt_data: PromptData = match review_type {
+    let mut prompt_data: PromptData = match settings.review_type {
         ReviewType::General => PromptData::get_code_review_prompt(),
         ReviewType::Security => PromptData::get_security_review_prompt(),
         ReviewType::CodeStats => {
