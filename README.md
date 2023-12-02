@@ -93,14 +93,14 @@ see [openai models](https://platform.openai.com/docs/models/gpt-4-and-gpt-4-turb
 
 review type is:
 
-1. full review
-2. security review only
-3. mock run, not using LLM for code review
+1. "general" = full review - (default)
+2. "security" = security review only
+3. "stats" = mock run, not using LLM for code review
 
 output types are:
 
 1. `html`
-2. `json`
+2. `json` - (default)
 
 ```json
 
@@ -115,7 +115,7 @@ output types are:
     ],
     "default_provider": "openai",
     "output_type": "json",
-    "review_type": 1
+    "review_type": "general"
 }
 
 ```
