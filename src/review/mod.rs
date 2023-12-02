@@ -54,6 +54,7 @@ pub(crate) async fn assess_codebase(
         Err(e) => return Err(Box::new(e)),
     };
     let repository_root_pathbuf = repository_root.to_path_buf();
+    info!("Reviewing repository: {}", review.repository_name);
 
     // TODO:    Lookup whether there is a README / README.md / README.rs / Readme.txt (and variations)
     //          If there is extract to a string and pass to LLM for summarising as RepositoryReview.repository_purpose
@@ -253,7 +254,7 @@ async fn review_file(
     code_file_path: &String,
     code_file_contents: &String,
 ) -> Result<Option<FileReview>, Box<dyn std::error::Error>> {
-    info!("Handling output_file: {}", code_file_path);
+    info!("Reviewing file: {}", code_file_path);
     let provider: &ProviderSettings = get_provider(settings);
     let review_type: ReviewType = ReviewType::from_config(settings);
     let mut prompt_data: PromptData = match review_type {
@@ -314,6 +315,8 @@ async fn summarise_review_breakdown(
     settings: &Settings,
     review_breakdown: &ReviewBreakdown,
 ) -> Result<Option<String>, Box<dyn std::error::Error>> {
+    info!("Creating repository summary statement");
+
     let provider: &ProviderSettings = get_provider(settings);
     let mut prompt_data = PromptData::get_overall_summary_prompt();
 
@@ -328,7 +331,13 @@ async fn summarise_review_breakdown(
     let response_result: Result<ProviderCompletionResponse, Box<dyn Error>> =
         review_or_summarise(RequestType::Summarise, settings, provider, &prompt_data).await;
     match response_result {
-        Ok(response) => Ok(Some(response.choices[0].message.content.to_string())),
+        Ok(response) => Ok(Some(
+            response.choices[0]
+                .message
+                .content
+                .to_string()
+                .replace(" - ", "\n"),
+        )),
         Err(e) => Err(e),
     }
 }
