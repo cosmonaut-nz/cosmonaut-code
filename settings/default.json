@@ -10,5 +10,6 @@
     ],
     "default_provider": "OpenAI",
     "output_type": "html",
-    "review_type": "general"
+    "review_type": "general",
+    "review_cycles": 3
 }

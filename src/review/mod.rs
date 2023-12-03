@@ -11,6 +11,7 @@ mod tools;
 use crate::provider::api::ProviderCompletionResponse;
 use crate::provider::prompts::PromptData;
 use crate::provider::{review_or_summarise, RequestType};
+use crate::review::code::LanguageBreakdown;
 use crate::review::code::{
     analyse_file_language, calculate_rag_status_for_reviewed_file, initialize_language_analysis,
     FileInfo,
@@ -42,49 +43,17 @@ use walkdir::{DirEntry, WalkDir};
 pub(crate) async fn assess_codebase(
     settings: Settings,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    // Collect the review data in the following data struct
-    let mut review: RepositoryReview = RepositoryReview::new();
+    let mut review = initialise_repository_review(&settings)?;
+    let repository_root_pathbuf = validate_repository(PathBuf::from(&settings.repository_path))?;
+    let blacklisted_dirs = tools::get_blacklist_dirs(&repository_root_pathbuf);
 
-    match extract_repository_name(&settings.repository_path) {
-        Ok(dir_name) => review.repository_name(dir_name.to_string()),
-        Err(e) => return Err(Box::new(e)),
-    };
-    let repository_root = match validate_repository(Path::new(&settings.repository_path)) {
-        Ok(path) => path,
-        Err(e) => return Err(Box::new(e)),
-    };
-    let repository_root_pathbuf = repository_root.to_path_buf();
-    info!("Reviewing repository: {}", review.repository_name);
-
-    // TODO:    Lookup whether there is a README / README.md / README.rs / Readme.txt (and variations)
-    //          If there is extract to a string and pass to LLM for summarising as RepositoryReview.repository_purpose
-
-    let blacklisted_dirs: Vec<String> = tools::get_blacklist_dirs(repository_root);
-
-    let mut overall_file_count: i32 = 0;
     let (lc, mut breakdown, rules, docs) = initialize_language_analysis();
+    let mut review_breakdown: ReviewBreakdown = initialise_review_breakdown();
 
-    let mut review_breakdown = ReviewBreakdown {
-        summary: String::new(),
-        security_issues: SecurityIssueBreakdown {
-            low: 0,
-            medium: 0,
-            high: 0,
-            critical: 0,
-            total: 0,
-        },
-        errors: 0,
-        improvements: 0,
-        documentation: None, // TODO: to implement the review of the state of documentation, etc.
-    };
+    let mut overall_file_count = 0;
 
-    // Fetch files from non-blacklisted dirs (that are not symlinks)
-    for entry in WalkDir::new(repository_root)
-        .into_iter()
-        .filter_entry(|e| is_not_blacklisted(e, &blacklisted_dirs) && !e.file_type().is_symlink())
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file())
-    {
+    // Iterate through the files in the repository that are not blacklisted or not relevant
+    for entry in get_files_from_repository(&repository_root_pathbuf, &blacklisted_dirs) {
         // This holds hard stats on the file, note that the LLM does attempt to fill in some of this, but often gets it wrong.
         let result: Option<FileInfo> =
             get_file_info(&entry, &repository_root_pathbuf).and_then(|file_info| {
@@ -100,40 +69,35 @@ pub(crate) async fn assess_codebase(
                 )
             });
 
-        if let Some(file_info) = result {
-            overall_file_count += 1;
-            breakdown.add_usage(
-                &file_info.language.clone().unwrap().name,
-                file_info.ext.to_str().unwrap_or_default(),
-                file_info.file_size.unwrap(),
-                file_info.loc.unwrap(),
-            );
-
-            #[cfg(debug_assertions)]
-            if settings.is_developer_mode() {
-                if let Some(max_count) = settings.developer_mode.as_ref().unwrap().max_file_count {
-                    // To make JSON config easier, a negative max_file_count skips
-                    if max_count >= 0 && overall_file_count > max_count {
-                        continue;
-                    }
-                }
-            }
-
-            let contents_str = match file_info.contents.to_str() {
-                Some(contents) => contents,
-                None => {
-                    error!(
-                        "Contents of the code file, {:?}, are not valid UTF-8, skipping.",
-                        entry.file_name()
-                    );
+        #[cfg(debug_assertions)]
+        if settings.is_developer_mode() {
+            if let Some(max_count) = settings.developer_mode.as_ref().unwrap().max_file_count {
+                // To make JSON config easier, a negative max_file_count ignores
+                if max_count >= 0 && overall_file_count >= max_count {
                     continue;
                 }
-            };
+            }
+        }
+
+        if let Some(file_info) = result {
+            overall_file_count += 1;
+            update_language_breakdown(&mut breakdown, &file_info);
+
             let file_name_str = match file_info.name.to_str() {
                 Some(name) => name,
                 None => {
                     error!(
                         "File name, {:?}, is not valid UTF-8, skipping.",
+                        entry.file_name()
+                    );
+                    continue;
+                }
+            };
+            let contents_str = match file_info.contents.to_str() {
+                Some(contents) => contents,
+                None => {
+                    error!(
+                        "Contents of the code file, {:?}, are not valid UTF-8, skipping.",
                         entry.file_name()
                     );
                     continue;
@@ -147,55 +111,125 @@ pub(crate) async fn assess_codebase(
             .await
             {
                 Ok(Some(mut reviewed_file)) => {
-                    review_breakdown.errors +=
-                        reviewed_file.errors.as_ref().map_or(0, Vec::len) as i32;
-                    review_breakdown.improvements +=
-                        reviewed_file.improvements.as_ref().map_or(0, Vec::len) as i32;
-
-                    if let Some(issues) = &reviewed_file.security_issues {
-                        for issue in issues {
-                            review_breakdown.security_issues.total += 1;
-                            match issue.severity {
-                                Severity::Low => review_breakdown.security_issues.low += 1,
-                                Severity::Medium => review_breakdown.security_issues.medium += 1,
-                                Severity::High => review_breakdown.security_issues.high += 1,
-                                Severity::Critical => {
-                                    review_breakdown.security_issues.critical += 1
-                                }
-                            }
-                        }
-                    }
-                    review_breakdown.summary.push_str(&reviewed_file.summary);
-                    review_breakdown.summary.push('\n');
-
-                    let file_statistics = LanguageFileType {
-                        language: file_info
-                            .language
-                            .as_ref()
-                            .map_or(String::new(), |lang| lang.to_string()),
-                        extension: file_info.ext.to_string_lossy().into_owned(),
-                        percentage: 0.0,
-                        loc: file_info.loc.unwrap_or(0),
-                        total_size: file_info.file_size.unwrap_or(0),
-                        file_count: 1,
-                    };
-                    reviewed_file.statistics = Some(file_statistics);
-                    reviewed_file.file_rag_status =
-                        calculate_rag_status_for_reviewed_file(&reviewed_file).unwrap_or_default();
-
+                    update_review_breakdown(&mut review_breakdown, &mut reviewed_file, &file_info);
                     review.add_file_review(reviewed_file);
                 }
-                Ok(None) => {
-                    warn!("No review actioned. None returned from 'review_file'")
-                }
-                Err(e) => {
-                    return Err(e);
-                }
+                Ok(None) => warn!("No review actioned. None returned from 'review_file'"),
+                Err(e) => return Err(e),
             }
         }
     }
+    // Finalise the review and close out
+    match finalise_review(
+        &mut review,
+        overall_file_count,
+        &mut review_breakdown,
+        &breakdown,
+        &settings,
+    )
+    .await
+    {
+        Ok(_) => (),
+        Err(e) => return Err(e),
+    };
+
+    create_report(&settings, &review)
+}
+
+/// Initialises a new [`RepositoryReview`] according to the configured name from path
+fn initialise_repository_review(
+    settings: &Settings,
+) -> Result<RepositoryReview, Box<dyn std::error::Error>> {
+    let repository_name = extract_repository_name(&settings.repository_path)
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+    Ok(RepositoryReview::new(repository_name.to_string()))
+}
+/// gets files from non-blacklisted dirs (that are not symlinks)
+fn get_files_from_repository(
+    repository_root: &PathBuf,
+    blacklisted_dirs: &[String],
+) -> Vec<DirEntry> {
+    WalkDir::new(repository_root)
+        .into_iter()
+        .filter_entry(|e| is_not_blacklisted(e, blacklisted_dirs) && !e.file_type().is_symlink())
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+        .collect()
+}
+/// TODO: to implement the review of the state of documentation, etc.
+fn initialise_review_breakdown() -> ReviewBreakdown {
+    ReviewBreakdown {
+        summary: String::new(),
+        security_issues: SecurityIssueBreakdown {
+            low: 0,
+            medium: 0,
+            high: 0,
+            critical: 0,
+            total: 0,
+        },
+        errors: 0,
+        improvements: 0,
+        documentation: None,
+    }
+}
+///
+fn update_language_breakdown(breakdown: &mut LanguageBreakdown, file_info: &FileInfo) {
+    if let Some(language) = &file_info.language {
+        let language_name = language.name.clone();
+        let file_extension = file_info.ext.to_str().unwrap_or_default().to_string();
+        let file_size = file_info.file_size.unwrap_or(0);
+        let loc = file_info.loc.unwrap_or(0);
+        breakdown.add_usage(&language_name, &file_extension, file_size, loc);
+    }
+}
+
+fn update_review_breakdown(
+    review_breakdown: &mut ReviewBreakdown,
+    reviewed_file: &mut FileReview,
+    file_info: &FileInfo,
+) {
+    review_breakdown.errors += reviewed_file.errors.as_ref().map_or(0, Vec::len) as i32;
+    review_breakdown.improvements += reviewed_file.improvements.as_ref().map_or(0, Vec::len) as i32;
+
+    if let Some(issues) = &reviewed_file.security_issues {
+        for issue in issues {
+            review_breakdown.security_issues.total += 1;
+            match issue.severity {
+                Severity::Low => review_breakdown.security_issues.low += 1,
+                Severity::Medium => review_breakdown.security_issues.medium += 1,
+                Severity::High => review_breakdown.security_issues.high += 1,
+                Severity::Critical => review_breakdown.security_issues.critical += 1,
+            }
+        }
+    }
+    review_breakdown.summary.push_str(&reviewed_file.summary);
+    review_breakdown.summary.push('\n');
+
+    let file_statistics = LanguageFileType {
+        language: file_info
+            .language
+            .as_ref()
+            .map_or(String::new(), |lang| lang.name.clone()),
+        extension: file_info.ext.to_string_lossy().into_owned(),
+        percentage: 0.0, // Calculate if necessary
+        loc: file_info.loc.unwrap_or(0),
+        total_size: file_info.file_size.unwrap_or(0),
+        file_count: 1,
+    };
+    reviewed_file.statistics = Some(file_statistics);
+    reviewed_file.file_rag_status =
+        calculate_rag_status_for_reviewed_file(reviewed_file).unwrap_or_default();
+}
+
+async fn finalise_review(
+    review: &mut RepositoryReview,
+    overall_file_count: i32,
+    review_breakdown: &mut ReviewBreakdown,
+    breakdown: &LanguageBreakdown,
+    settings: &Settings,
+) -> Result<(), Box<dyn std::error::Error>> {
     if !review.file_reviews.is_empty() {
-        match summarise_review_breakdown(&settings, &review_breakdown).await {
+        match summarise_review_breakdown(settings, review_breakdown).await {
             Ok(Some(summary)) => {
                 review_breakdown.summary = summary;
             }
@@ -206,41 +240,36 @@ pub(crate) async fn assess_codebase(
             Err(e) => return Err(e),
         };
     }
+    review.summary(Some(review_breakdown.clone()));
+
+    let predominant_language =
+        LanguageFileType::get_predominant_language(&breakdown.to_language_file_types())
+            .unwrap_or_else(|| "UNKNOWN".to_string());
+    review.repository_type(Some(predominant_language));
+
+    // Date stamp the review
     let now_utc: DateTime<Utc> = Utc::now();
     let now_local = now_utc.with_timezone(&Local);
     let review_date = now_local.format("%H:%M, %d/%m/%Y").to_string();
-
-    // Complete the fields in the [`RepositoryReview`] struct
-    if let Some(language) =
-        LanguageFileType::get_predominant_language(&breakdown.to_language_file_types())
-    {
-        review.repository_type(Some(language));
-    } else {
-        review.repository_type(Some("UNKNOWN".to_string()));
-    }
     review.date(review_date);
-    review.repository_purpose(None); // TODO: Derive this from summarising the README by the LLM (not in MVP)
-    review.summary(Some(review_breakdown));
-    review.repository_rag_status(get_overall_rag_for(&review));
+
+    review.repository_purpose(None); // TODO Implement if required
+    review.repository_rag_status(get_overall_rag_for(review));
+
     review.sum_num_files(Some(overall_file_count));
     review.sum_loc(Some(LanguageFileType::sum_lines_of_code(
         &breakdown.to_language_file_types(),
     )));
     review.contributors(get_git_contributors(&settings.repository_path));
     review.language_file_types(breakdown.to_language_file_types());
-    let provider: &ProviderSettings = get_provider(&settings);
+
+    let provider: &ProviderSettings = get_provider(settings);
     review.generative_ai_service_and_model(Some(format!(
         "provider: {}, service: {}, model: {}",
         provider.name, provider.service, provider.model
     )));
 
-    let review_path = match create_report(&settings, &review) {
-        Ok(review_path) => review_path,
-        Err(e) => return Err(e),
-    };
-
-    info!("TOTAL NUMBER OF FILES PROCESSED: {}", overall_file_count);
-    Ok(review_path)
+    Ok(())
 }
 
 /// Takes the file contents of a file and sends it to the LLM for review
@@ -261,61 +290,80 @@ async fn review_file(
     code_file_contents: &String,
 ) -> Result<Option<FileReview>, Box<dyn std::error::Error>> {
     info!("Reviewing file: {}", code_file_path);
-    let provider: &ProviderSettings = get_provider(settings);
-    let mut prompt_data: PromptData = match settings.review_type {
-        ReviewType::General => PromptData::get_code_review_prompt(),
-        ReviewType::Security => PromptData::get_security_review_prompt(),
-        ReviewType::CodeStats => {
-            info!("CODE STATISTICS ONLY. Only running code statistics, no review run.");
-            return Ok(None);
-        }
-    };
-    let review_request: String = format!("File name: {}\n{}\n", code_file_path, code_file_contents);
-    prompt_data.add_user_message_prompt(review_request);
 
-    let mut attempts = 0;
-    let max_retries = provider.max_retries.unwrap_or(0);
-    // TODO sooo... deep with the nesting! Please fix me.
-    loop {
-        let response_result: Result<ProviderCompletionResponse, Box<dyn Error>> =
-            review_or_summarise(RequestType::Review, settings, provider, &prompt_data).await;
-        match response_result {
-            Ok(response) => {
-                let orig_response_json = response.choices[0].message.content.to_string();
-                match strip_artifacts_from(&orig_response_json) {
-                    Ok(stripped_json) => match data::deserialize_file_review(&stripped_json) {
-                        Ok(filereview_from_json) => return Ok(Some(filereview_from_json)),
-                        Err(e) => {
-                            error!("Failed to deserialize: {:?}, Possibly due to invalid escape character", &stripped_json);
-                            if attempts >= max_retries {
-                                return Err(format!(
-                                    "Failed to deserialize into FileReview: {}",
-                                    e
-                                )
-                                .into());
-                            }
-                        }
-                    },
-                    Err(e) => {
-                        if attempts >= max_retries {
-                            return Err(format!("Error stripping JSON markers: {}", e).into());
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                if attempts >= max_retries {
-                    return Err(e);
-                }
-            }
-        }
+    if let Some(mut prompt_data) = get_prompt_data_based_on_review_type(settings)? {
+        let provider: &ProviderSettings = get_provider(settings);
+        let review_request: String =
+            format!("File name: {}\n{}\n", code_file_path, code_file_contents);
 
-        attempts += 1;
-        // TODO: Add a delay between retries
-        // tokio::time::sleep(Duration::from_millis(1000)).await;
+        prompt_data.add_user_message_prompt(review_request);
+        perform_review(settings, provider, &prompt_data).await
+    } else {
+        Ok(None)
     }
 }
+/// Fetches the correct [`PromptData`] according to the [`ReviewType`] passed
+fn get_prompt_data_based_on_review_type(
+    settings: &Settings,
+) -> Result<Option<PromptData>, Box<dyn std::error::Error>> {
+    match settings.review_type {
+        ReviewType::General => Ok(Some(PromptData::get_code_review_prompt())),
+        ReviewType::Security => Ok(Some(PromptData::get_security_review_prompt())),
+        ReviewType::CodeStats => {
+            info!("CODE STATISTICS ONLY. Only running code statistics, no review run.");
+            Ok(None)
+        }
+    }
+}
+/// passes to the LLM the required review via a preconfigured [`PromptData`]
+async fn perform_review(
+    settings: &Settings,
+    provider: &ProviderSettings,
+    prompt_data: &PromptData,
+) -> Result<Option<FileReview>, Box<dyn std::error::Error>> {
+    let max_retries = provider.max_retries.unwrap_or(0);
+    let mut attempts = 0;
 
+    loop {
+        match review_or_summarise(RequestType::Review, settings, provider, prompt_data).await {
+            Ok(response) => match process_response(&response) {
+                Ok(file_review) => return Ok(Some(file_review)),
+                Err(e) if attempts < max_retries => {
+                    error!("Error processing response: {}", e);
+                    attempts += 1;
+                }
+                Err(e) => return Err(e),
+            },
+            Err(e) if attempts < max_retries => {
+                error!("Error in review: {}", e);
+                attempts += 1;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+}
+/// processes the response returned by the LLM, stripping any artefacts, or illegal chars, then loading the JSON into a [`FileReview`]
+fn process_response(
+    response: &ProviderCompletionResponse,
+) -> Result<FileReview, Box<dyn std::error::Error>> {
+    let orig_response_json = response.choices[0].message.content.to_string();
+
+    strip_artifacts_from(&orig_response_json)
+        .map_err(|e| {
+            Box::new(std::io::Error::new(std::io::ErrorKind::Other, e))
+                as Box<dyn std::error::Error>
+        })
+        .and_then(|stripped_json| {
+            data::deserialize_file_review(&stripped_json).map_err(|e| {
+                error!(
+                    "Failed to deserialize: {:?}, Possibly due to invalid escape character",
+                    &stripped_json
+                );
+                Box::new(e) as Box<dyn std::error::Error>
+            })
+        })
+}
+/// ask the LLM to summarise to whole set of [`FileReview`] summaries into a single repository summary
 async fn summarise_review_breakdown(
     settings: &Settings,
     review_breakdown: &ReviewBreakdown,
@@ -346,9 +394,8 @@ async fn summarise_review_breakdown(
         Err(e) => Err(e),
     }
 }
-
 /// validates the provided [`Path`] as being a directory that holds a '.git' subdirectory - i.e. is a valid git repository
-fn validate_repository(repository_root: &Path) -> Result<&Path, PathError> {
+fn validate_repository(repository_root: PathBuf) -> Result<PathBuf, PathError> {
     if !repository_root.is_dir() {
         return Err(PathError {
             message: format!(
@@ -388,7 +435,6 @@ fn get_file_info(entry: &DirEntry, repo_root: &PathBuf) -> Option<FileInfo> {
         loc: None,
     })
 }
-
 /// gives an overall [`RAGStatus`] for the passed [`RepositoryReview`]
 fn get_overall_rag_for(review: &RepositoryReview) -> RAGStatus {
     if let Some(breakdown) = &review.summary {
@@ -409,7 +455,6 @@ fn get_overall_rag_for(review: &RepositoryReview) -> RAGStatus {
 
     RAGStatus::Green
 }
-
 // Gets the currently active provider. If there is a misconfiguration (i.e., a mangled `default.json`) then panics
 fn get_provider(settings: &Settings) -> &crate::settings::ProviderSettings {
     let provider: &crate::settings::ProviderSettings = settings.get_active_provider()
@@ -417,25 +462,7 @@ fn get_provider(settings: &Settings) -> &crate::settings::ProviderSettings {
                                               Either none was found, or the default provider did not match any name in the configured providers list.");
     provider
 }
-
-#[derive(Debug)]
-struct PathError {
-    message: String,
-}
-impl PathError {
-    fn new(message: &str) -> PathError {
-        PathError {
-            message: message.to_string(),
-        }
-    }
-}
-impl fmt::Display for PathError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Path error: {}", self.message)
-    }
-}
-impl Error for PathError {}
-
+/// Gets the actual repository name from the path
 fn extract_repository_name(path_str: &str) -> Result<&str, PathError> {
     let path = Path::new(path_str);
 
@@ -490,7 +517,6 @@ fn strip_artifacts_from(orig_json_str: &str) -> Result<String, &'static str> {
         Err("No valid JSON found")
     }
 }
-
 /// A utility to check the JSON sent back from the LLM
 #[cfg(debug_assertions)]
 fn _pretty_print_json_for_debug(json_str: &str) {
@@ -511,6 +537,24 @@ fn _pretty_print_json_for_debug(json_str: &str) {
         }
     }
 }
+
+#[derive(Debug)]
+struct PathError {
+    message: String,
+}
+impl PathError {
+    fn new(message: &str) -> PathError {
+        PathError {
+            message: message.to_string(),
+        }
+    }
+}
+impl fmt::Display for PathError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Path error: {}", self.message)
+    }
+}
+impl Error for PathError {}
 
 #[cfg(test)]
 mod tests {
