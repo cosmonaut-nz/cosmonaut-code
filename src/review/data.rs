@@ -31,9 +31,9 @@ pub(crate) struct RepositoryReview {
     pub(crate) file_reviews: Vec<FileReview>,   // Each of the code files
 }
 impl RepositoryReview {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(repository_name: String) -> Self {
         RepositoryReview {
-            repository_name: String::new(),
+            repository_name,
             generative_ai_service_and_model: None,
             repository_type: None,
             date: String::new(),
@@ -52,15 +52,9 @@ impl RepositoryReview {
         self.file_reviews.push(file_review);
     }
 }
-impl Default for RepositoryReview {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 impl_builder_methods!(
     RepositoryReview,
-    repository_name: String,
     generative_ai_service_and_model: Option<String>,
     repository_type: Option<String>,
     date: String,

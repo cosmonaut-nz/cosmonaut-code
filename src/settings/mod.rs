@@ -29,6 +29,8 @@ pub(crate) struct Settings {
     pub(crate) default_provider: String,
     pub(crate) output_type: OutputType,
     pub(crate) review_type: ReviewType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) review_cycles: Option<i32>,
     pub(crate) repository_path: String,
     pub(crate) report_output_path: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -385,6 +387,7 @@ mod tests {
             default_provider: "OpenAI".to_string(),
             output_type: OutputType::Json,
             review_type: ReviewType::General,
+            review_cycles: None,
             repository_path: "path/to/repo".to_string(),
             report_output_path: "path/to/report".to_string(),
             sensitive: SensitiveSettings {
