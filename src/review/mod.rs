@@ -4,6 +4,7 @@
 //! Passes each relevant (code) file for review.
 //! Applies rules to the findings to produce a human readable summary and (set of) RAG statuses.
 //! Produces a human readable report.
+// TODO Complete refactor! The file is hard to manage, and oftentimes does not meet good DRY or SOLID principles
 mod code;
 pub(crate) mod data;
 pub(crate) mod report;
@@ -26,6 +27,7 @@ use crate::settings::{ProviderSettings, ReviewType, Settings};
 use chrono::{DateTime, Local, Utc};
 use log::{debug, error, info, warn};
 use regex::Regex;
+use sha2::{Digest, Sha256};
 use std::error::Error;
 use std::ffi::OsStr;
 use std::fmt;
@@ -44,8 +46,20 @@ pub(crate) async fn assess_codebase(
     settings: Settings,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let mut review = initialise_repository_review(&settings)?;
-    let repository_root_pathbuf = validate_repository(PathBuf::from(&settings.repository_path))?;
-    let blacklisted_dirs = tools::get_blacklist_dirs(&repository_root_pathbuf);
+    let repository_root = validate_repository(PathBuf::from(&settings.repository_path))?;
+
+    let provider: &ProviderSettings = get_provider(&settings);
+    review.generative_ai_service_and_model(Some(format!(
+        "provider: {}, service: {}, model: {}",
+        provider.name, provider.service, provider.model
+    )));
+    info!(
+        "Reviewing: {}, with {}",
+        review.repository_name,
+        review.generative_ai_service_and_model.clone().unwrap()
+    );
+
+    let blacklisted_dirs = tools::get_blacklist_dirs(&repository_root);
 
     let (lc, mut breakdown, rules, docs) = initialize_language_analysis();
     let mut review_breakdown: ReviewBreakdown = initialise_review_breakdown();
@@ -53,14 +67,15 @@ pub(crate) async fn assess_codebase(
     let mut overall_file_count = 0;
 
     // Iterate through the files in the repository that are not blacklisted or not relevant
-    for entry in get_files_from_repository(&repository_root_pathbuf, &blacklisted_dirs) {
+    for entry in get_files_from_repository(&repository_root, &blacklisted_dirs) {
         // This holds hard stats on the file, note that the LLM does attempt to fill in some of this, but often gets it wrong.
         let result: Option<FileInfo> =
-            get_file_info(&entry, &repository_root_pathbuf).and_then(|file_info| {
+            get_file_info(&entry, &repository_root).and_then(|file_info| {
                 analyse_file_language(&file_info, &lc, &rules, &docs).map(
                     |(language, file_size, loc)| FileInfo {
                         contents: file_info.contents,
                         name: file_info.name,
+                        id_hash: file_info.id_hash,
                         ext: file_info.ext,
                         language: Some(language),
                         file_size: Some(file_size),
@@ -209,16 +224,17 @@ fn update_review_breakdown(
         language: file_info
             .language
             .as_ref()
-            .map_or(String::new(), |lang| lang.name.clone()),
-        extension: file_info.ext.to_string_lossy().into_owned(),
-        percentage: 0.0, // Calculate if necessary
-        loc: file_info.loc.unwrap_or(0),
-        total_size: file_info.file_size.unwrap_or(0),
-        file_count: 1,
+            .map_or(Some(String::new()), |lang| Some(lang.name.clone())),
+        extension: Some(file_info.ext.to_string_lossy().into_owned()),
+        percentage: Some(0.0),
+        loc: Some(file_info.loc.unwrap_or(0)),
+        total_size: Some(file_info.file_size.unwrap_or(0)),
+        file_count: Some(1),
     };
     reviewed_file.statistics = Some(file_statistics);
     reviewed_file.file_rag_status =
         calculate_rag_status_for_reviewed_file(reviewed_file).unwrap_or_default();
+    reviewed_file.id_hash = Some(file_info.id_hash.to_string_lossy().into_owned());
 }
 
 async fn finalise_review(
@@ -262,12 +278,6 @@ async fn finalise_review(
     )));
     review.contributors(get_git_contributors(&settings.repository_path));
     review.language_file_types(breakdown.to_language_file_types());
-
-    let provider: &ProviderSettings = get_provider(settings);
-    review.generative_ai_service_and_model(Some(format!(
-        "provider: {}, service: {}, model: {}",
-        provider.name, provider.service, provider.model
-    )));
 
     Ok(())
 }
@@ -364,21 +374,18 @@ fn process_response(
         })
 }
 /// ask the LLM to summarise to whole set of [`FileReview`] summaries into a single repository summary
-async fn summarise_review_breakdown(
+pub(crate) async fn summarise_review_breakdown(
     settings: &Settings,
     review_breakdown: &ReviewBreakdown,
 ) -> Result<Option<String>, Box<dyn std::error::Error>> {
     info!("Creating repository summary statement");
 
     let provider: &ProviderSettings = get_provider(settings);
-    let mut prompt_data = PromptData::get_overall_summary_prompt();
+    let mut prompt_data: PromptData = PromptData::get_overall_summary_prompt();
 
     debug!("Input review summaries: {}", review_breakdown.summary);
 
-    let summary_request: String = format!(
-        "Concisely summarise the following: {}\n",
-        review_breakdown.summary
-    );
+    let summary_request: String = review_breakdown.summary.to_string();
     prompt_data.add_user_message_prompt(summary_request);
 
     let response_result: Result<ProviderCompletionResponse, Box<dyn Error>> =
@@ -424,11 +431,13 @@ fn get_file_info(entry: &DirEntry, repo_root: &PathBuf) -> Option<FileInfo> {
 
     let contents = fs::read_to_string(path).ok()?;
     let name = relative_path.to_str()?;
+    let id_hash = calculate_hash(&contents);
     let ext = path.extension()?.to_os_string();
 
     Some(FileInfo {
         contents: Arc::new(OsStr::new(&contents).to_os_string()),
         name: Arc::new(OsStr::new(name).to_os_string()),
+        id_hash: Arc::new(OsStr::new(&id_hash).to_os_string()),
         ext: Arc::new(ext),
         language: None,
         file_size: None,
@@ -480,6 +489,14 @@ fn extract_repository_name(path_str: &str) -> Result<&str, PathError> {
     dir_name
         .and_then(|os_str| os_str.to_str())
         .ok_or_else(|| PathError::new("Invalid directory name"))
+}
+/// Calculates a hash from a string
+fn calculate_hash(data: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    let result = hasher.finalize();
+
+    format!("{:x}", result)
 }
 /// Removes any artefacts from an AI review
 ///

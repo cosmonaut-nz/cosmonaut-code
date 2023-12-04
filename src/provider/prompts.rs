@@ -9,6 +9,8 @@ use crate::provider::api::{ProviderCompletionMessage, ProviderMessageRole};
 use serde::{Deserialize, Serialize};
 
 const FILE_REVIEW_SCHEMA: &str = include_str!("../provider/specification/file_review.schema.json");
+
+const LANGUAGE_USED: &str = "Use British English";
 const JSON_HANDLING_ADVICE: &str = r#"Provide your analysis strictly in valid JSON format. 
                                     Strictly escape any characters within your response strings that will create invalid JSON, such as \" - i.e., double quotes. 
                                     Never use comments in your JSON. 
@@ -112,20 +114,36 @@ impl PromptData {
             messages: vec![
                 ProviderCompletionMessage {
                     role: ProviderMessageRole::System,
-                    content: r#"As an expert software code reviewer with comprehensive knowledge in software and information security, 
-                                summarise a set of findings from the detailed review of this repository."#.to_string(),
+                    content: LANGUAGE_USED.to_string(),
                 },
                 ProviderCompletionMessage {
                     role: ProviderMessageRole::System,
-                    content: r#"Use excellent grammar. Keep the summary very brief and concise. Only give significant information: general code quality; an overview of security; and overview of code quality. 
-                                Do not mention file names."#.to_string(),
+                    content: r"As an expert software code reviewer with comprehensive knowledge in software and information security, 
+                                you are asked to create an extract summary of a set of findings from the detailed review of a software repository. 
+                                The findings are given per source file and separated by a linebreak ('\n).
+                                The audience for this summary is executive level and non-technical. No technical terms should be used; use simple, clear terms.
+                                Keep the summary at a maximum 1000 characters.
+                                ".to_string(),
+                },
+                ProviderCompletionMessage {
+                    role: ProviderMessageRole::System,
+                    content: r#"Provide paragraphs for four sections. These sections are. 
+                                Overview: the overall purpose of the repository; 
+                                Security: a brief overview of security; 
+                                Quality: a brief overview of code quality. 
+                                Conclusion.
+                                Each section MUST be under 250 characters in length.
+                                DO NOT mention file names, (e.g., 'build.rs', or 'index.js', or 'helpers.py', 'src/test/test.ts', etc.).
+                                Nor use technical terms or where the name is technical."#.to_string(),
                 },
                 ProviderCompletionMessage {
                     role: ProviderMessageRole::System,
                     content: r"Do not use Markdown as output. 
-                                Output in plaintext only. 
-                                Always add newline characters (i.e., '\n') for paragraphs, indented bullets or item numbering.".to_string(),
-                }, // Fake "replaying" previous interactions to show the level of summary.
+                                Output in plaintext with clear formatting. 
+                                DO NOT use lists, such as indented bullets or item numbering.
+                                ".to_string(),
+                },
+                // Fake "replaying" previous interactions to show the level of summary.
                 ProviderCompletionMessage {
                     role: ProviderMessageRole::User,
                     content: r#"Concisely summarise the following: 
@@ -147,10 +165,14 @@ impl PromptData {
                 ProviderCompletionMessage {
                     role: ProviderMessageRole::Assistant,
                     content: r#"The codebase demonstrates a satisfactory level of code quality with no critical errors or security issues found. 
-                                However, security-wise, there's a concerning issue as the code risks leaking API keys, which is a high severity vulnerability.
-                                There is room for optimization and refinement to enhance code quality and readability. Configuration data handling could be improved, 
+                                However, security-wise, there is a concerning issue as the code risks leaking API keys, which is a high risk vulnerability.
+                                There is room for optimisation and refinement to enhance code quality and readability. Configuration data handling could be improved, 
                                 as it does not fully comply with secure configuration management best practices. 
-                                Significant improvements to documentation for higher clarity is desired."#.to_string(),
+                                Significant improvements to documentation for higher clarity and improved maintainability."#.to_string(),
+                },
+                ProviderCompletionMessage {
+                    role: ProviderMessageRole::User,
+                    content: "Good summary.".to_string(), 
                 },
             ],
         }
