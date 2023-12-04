@@ -37,53 +37,6 @@ pub(crate) struct Settings {
     pub(crate) developer_mode: Option<DeveloperMode>,
     pub(crate) sensitive: SensitiveSettings,
 }
-
-#[derive(Debug, Serialize, Deserialize, Default, PartialEq)]
-pub(crate) enum ReviewType {
-    #[serde(rename = "general")]
-    #[default]
-    General,
-    #[serde(rename = "security")]
-    Security,
-    #[serde(rename = "stats")]
-    CodeStats,
-}
-
-/// An [`Option`]al set of settings to control the output of the programme for development purposes
-/// #Fields
-///
-/// - 'max_file_count': To improve development feedback loop time on big repos, allows sampling.
-/// - 'verbose_data_output': a flag to produce a full 'json' file, even if the [`OutputType`] is 'html' or other
-#[derive(Serialize, Deserialize, PartialEq)]
-pub(crate) struct DeveloperMode {
-    pub(crate) max_file_count: Option<i32>,
-    pub(crate) verbose_data_output: bool,
-}
-
-#[derive(Serialize, Deserialize, PartialEq)]
-pub(crate) struct ProviderSettings {
-    pub(crate) name: String,
-    pub(crate) service: String,
-    pub(crate) model: String,
-    pub(crate) api_url: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) api_timeout: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) max_tokens: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) max_retries: Option<i64>,
-}
-#[derive(Serialize, Deserialize, PartialEq)]
-pub(crate) struct SensitiveSettings {
-    pub(crate) api_key: APIKey,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) org_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) org_name: Option<String>,
-}
-#[derive(Serialize, Deserialize, PartialEq)]
-pub(crate) struct APIKey(String); // Sensitive data!
-
 /// Custom Debug implementation for Settings
 impl fmt::Debug for Settings {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -195,6 +148,60 @@ impl Settings {
         self.developer_mode.is_some()
     }
 }
+#[derive(Debug, Serialize, Deserialize, Default, PartialEq)]
+pub(crate) enum ReviewType {
+    #[serde(rename = "general")]
+    #[default]
+    General,
+    #[serde(rename = "security")]
+    Security,
+    #[serde(rename = "stats")]
+    CodeStats,
+}
+
+/// An [`Option`]al set of settings to control the output of the programme for development purposes
+/// #Fields
+///
+/// - 'max_file_count': To improve development feedback loop time on big repos, allows sampling.
+/// - 'verbose_data_output': a flag to produce a full 'json' file, even if the [`OutputType`] is 'html' or other
+/// - 'developer_path': Provides a developer path through the code.
+/// - 'test_json_path': the path to a previous [`crate::review::data::RepositoryReview`] serialized to a file.
+#[derive(Serialize, Deserialize, PartialEq, Clone)]
+pub(crate) struct DeveloperMode {
+    pub(crate) max_file_count: Option<i32>,
+    #[serde(default = "default_false")]
+    pub(crate) verbose_data_output: bool,
+    #[serde(default = "default_false")]
+    pub(crate) test_path: bool,
+    pub(crate) test_json_file: Option<String>,
+}
+fn default_false() -> bool {
+    true
+}
+
+#[derive(Serialize, Deserialize, PartialEq)]
+pub(crate) struct ProviderSettings {
+    pub(crate) name: String,
+    pub(crate) service: String,
+    pub(crate) model: String,
+    pub(crate) api_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) api_timeout: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) max_tokens: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) max_retries: Option<i64>,
+}
+#[derive(Serialize, Deserialize, PartialEq)]
+pub(crate) struct SensitiveSettings {
+    pub(crate) api_key: APIKey,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) org_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) org_name: Option<String>,
+}
+#[derive(Serialize, Deserialize, PartialEq)]
+pub(crate) struct APIKey(String); // Sensitive data!
 /// Custom Debug implementation for ProviderSettings
 impl fmt::Debug for ProviderSettings {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

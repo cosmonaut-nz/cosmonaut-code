@@ -44,7 +44,7 @@
         },
         "summary": {
             "type": "string",
-            "description": "A brief and concise summary of the findings during the code review ensuring that the summary reflects the findings, such as security_issues, errors or improvements."
+            "description": "A brief and concise summary of what the file functionally does and of the findings during the code review ensuring that the summary reflects the findings, such as security_issues, errors or improvements."
         }
     },
     "required": [

@@ -55,6 +55,7 @@ pub(crate) fn initialize_language_analysis() -> (
 pub(crate) struct FileInfo {
     pub(crate) contents: Arc<OsString>,
     pub(crate) name: Arc<OsString>,
+    pub(crate) id_hash: Arc<OsString>,
     pub(crate) ext: Arc<OsString>,
     pub(crate) language: Option<Language>,
     pub(crate) file_size: Option<u64>,
@@ -129,7 +130,7 @@ pub(crate) fn calculate_rag_status_for_reviewed_file(
     let loc = reviewed_file
         .statistics
         .as_ref()
-        .map_or(0, |statistics| statistics.loc);
+        .map_or(0, |statistics| statistics.loc.unwrap());
 
     let error_ratio = errors_count as f64 / loc as f64;
     let security_issues_ratio = security_issues_count as f64 / loc as f64;
@@ -227,12 +228,12 @@ impl LanguageBreakdown {
             for (extension, &(size, count, loc)) in extensions {
                 let percentage = (size as f64 / self.total_size as f64) * 100.0;
                 types.push(LanguageFileType {
-                    language: language.clone(),
-                    extension: extension.clone(),
-                    percentage,
-                    loc,
-                    total_size: size,
-                    file_count: count,
+                    language: Some(language.clone()),
+                    extension: Some(extension.clone()),
+                    percentage: Some(percentage),
+                    loc: Some(loc),
+                    total_size: Some(size),
+                    file_count: Some(count),
                 });
             }
         }

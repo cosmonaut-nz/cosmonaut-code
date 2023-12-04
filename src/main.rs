@@ -1,8 +1,9 @@
 //!
 //!
 //!
-//!
-//!
+#[cfg(debug_assertions)]
+mod dev_mode;
+
 mod common;
 mod provider;
 mod review;
@@ -22,20 +23,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let settings: settings::Settings = match settings::Settings::new() {
         Ok(cfg) => cfg,
         Err(e) => {
-            error!("Failed to load settings: {}", e);
+            error!("Fatal error. Failed to load settings: {}", e);
             // Cannot recover due to incomplete configuration
             std::process::exit(1);
         }
     };
 
-    // Call the assess_codebase, according to user configuration, either from commandline, or json settings files.
-    let report_output = review::assess_codebase(settings).await?;
+    #[cfg(debug_assertions)]
+    {
+        if !settings
+            .developer_mode
+            .clone()
+            .is_some_and(|dev_path| dev_path.test_path)
+        {
+            let report_output = review::assess_codebase(settings).await?;
 
-    info!("CODE REVIEW COMPLETE. See the output report for details.");
-    if let Err(e) = open_file_or_files(&report_output) {
-        error!("Failed to open file: {}", e);
+            info!("CODE REVIEW COMPLETE. See the output report for details.");
+            if let Err(e) = open_file_or_files(&report_output) {
+                error!("Failed to open file: {}", e);
+            }
+        } else {
+            info!("Taking developer path.");
+            dev_mode::comment_summary::test_summary(&settings).await?;
+        }
     }
 
+    #[cfg(not(debug_assertions))]
+    {
+        // Call the assess_codebase, according to user configuration, either from environment variables, or json settings files.
+        let report_output = review::assess_codebase(settings).await?;
+    }
     print_exec_duration(start.elapsed());
     Ok(())
 }

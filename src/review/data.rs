@@ -17,7 +17,7 @@ pub(crate) enum RAGStatus {
 pub(crate) struct RepositoryReview {
     pub(crate) repository_name: String, // Derived from path
     #[serde(skip_serializing_if = "Option::is_none")]
-    generative_ai_service_and_model: Option<String>,
+    pub(crate) generative_ai_service_and_model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     repository_type: Option<String>, // The type of repository, e.g., Java, .Net, etc.
     date: String,                                // Date of execution (formatted)
@@ -82,6 +82,7 @@ impl_builder_methods!(
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub(crate) struct FileReview {
     pub(crate) filename: String,           // The name of the file
+    pub(crate) id_hash: Option<String>,    // The contents of the file hashed as an ID
     pub(crate) summary: String,            // A summary of the findings of the review
     pub(crate) file_rag_status: RAGStatus, // In {Red, Amber, Green}
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -162,25 +163,27 @@ pub(crate) enum Documentation {
 }
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub(crate) struct LanguageFileType {
-    pub(crate) language: String,
-    pub(crate) extension: String,
-    pub(crate) percentage: f64,
-    pub(crate) loc: i64,
-    pub(crate) total_size: u64,
-    pub(crate) file_count: i32,
+    pub(crate) language: Option<String>,
+    pub(crate) extension: Option<String>,
+    pub(crate) percentage: Option<f64>,
+    pub(crate) loc: Option<i64>,
+    pub(crate) total_size: Option<u64>,
+    pub(crate) file_count: Option<i32>,
 }
 impl LanguageFileType {
     // Method to check if an extension is valid among a collection of LanguageFileType
     pub(crate) fn _has_extension_of(ext: &str, file_types: &[LanguageFileType]) -> bool {
-        file_types.iter().any(|lft| lft.extension == ext)
+        file_types
+            .iter()
+            .any(|lft| lft.extension == Some(ext.to_string()))
     }
     pub(crate) fn sum_lines_of_code(language_file_types: &[LanguageFileType]) -> i64 {
-        language_file_types.iter().map(|lft| lft.loc).sum()
+        language_file_types.iter().map(|lft| lft.loc.unwrap()).sum()
     }
     pub(crate) fn get_predominant_language(languages: &[LanguageFileType]) -> Option<String> {
         let mut predominant_language = None;
-        let mut highest_percentage = 0.0;
-        let mut largest_size = 0;
+        let mut highest_percentage = None;
+        let mut largest_size = None;
 
         for lang in languages {
             if lang.percentage > highest_percentage
@@ -188,7 +191,7 @@ impl LanguageFileType {
             {
                 highest_percentage = lang.percentage;
                 largest_size = lang.total_size;
-                predominant_language = Some(lang.language.clone());
+                predominant_language = lang.language.clone();
             }
         }
 
@@ -197,7 +200,7 @@ impl LanguageFileType {
     /// Used in the HTML template
     #[allow(dead_code)]
     pub(crate) fn formatted_percentage(&self) -> String {
-        format!("{:.2}", self.percentage)
+        format!("{:.2}", self.percentage.unwrap())
     }
 }
 
@@ -246,6 +249,7 @@ mod tests {
     fn test_deserialize_file_review() {
         let str_json = r#"{
                     "filename": "/Users/avastmick/repos/cosmonaut-code/src/provider/static_config.rs",
+                    "id_hash": "",
                     "summary": "The code defines a constant for a request timeout without any visible issues or security threats. However, the usage of 'pub(crate) (crate) const' could be improved for better code maintainability.",
                     "file_rag_status": "Green",
                     "errors": [],
@@ -267,6 +271,7 @@ mod tests {
 
         let expected_filereview: FileReview = FileReview {
             filename: "/Users/avastmick/repos/cosmonaut-code/src/provider/static_config.rs".to_string(),
+            id_hash: Some("".to_string()),
             summary:"The code defines a constant for a request timeout without any visible issues or security threats. However, the usage of 'pub(crate) (crate) const' could be improved for better code maintainability.".to_string(),
             file_rag_status: RAGStatus::Green,
             errors: Some(vec![]),

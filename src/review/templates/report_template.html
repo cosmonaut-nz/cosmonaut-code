@@ -186,7 +186,12 @@
         <div class="content">
             {{#each repository_review.file_reviews}}
             <div class='section'>
-                <p><strong>Filename</strong>: {{filename}}</p>
+                <p>
+                    <strong>Filename</strong>: {{filename}}
+                    {{#if id_hash}}
+                    <em style="font-size: smaller;"><strong>hash</strong>: {{id_hash}} (SHA256)</em>
+                    {{/if}}
+                </p>
                 <p><strong>Summary</strong>: {{summary}}</p>
                 <p><strong>File RAG status</strong>: <span
                         class="{{#if (eq file_rag_status 'Green')}}status-green{{/if}}{{#if (eq file_rag_status 'Amber')}}status-amber{{/if}}{{#if (eq file_rag_status 'Red')}}status-red{{/if}}">
@@ -253,7 +258,8 @@
     </script>
 </body>
 <footer>
-    <p style="font-size: smaller;">&gt;_ we are cosmonaut. <em>copyright &#169; cosmonaut (new zealand) ltd,
+    <p style="font-size: smaller;"><em style="font-size: smaller;">&gt;_ we are cosmonaut. copyright &#169; cosmonaut
+            (new zealand) ltd,
             {{current_year}}.</em></p>
 </footer>
 
