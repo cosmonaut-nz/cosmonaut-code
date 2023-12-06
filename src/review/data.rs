@@ -112,10 +112,11 @@ impl FileReview {
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
-pub(crate) struct Improvement {
-    code: String,
-    suggestion: String,
-    example: String,
+pub(crate) struct SecurityIssue {
+    pub(crate) severity: Severity,
+    pub(crate) code: String,
+    pub(crate) threat: String,
+    pub(crate) mitigation: String,
 }
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub(crate) struct Error {
@@ -124,12 +125,12 @@ pub(crate) struct Error {
     resolution: String,
 }
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
-pub(crate) struct SecurityIssue {
-    pub(crate) severity: Severity,
-    pub(crate) code: String,
-    pub(crate) threat: String,
-    pub(crate) mitigation: String,
+pub(crate) struct Improvement {
+    code: String,
+    suggestion: String,
+    improvement_details: String,
 }
+
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub(crate) enum Severity {
     Low,
@@ -248,7 +249,7 @@ mod tests {
     #[test]
     fn test_deserialize_file_review() {
         let str_json = r#"{
-                    "filename": "/Users/avastmick/repos/cosmonaut-code/src/provider/static_config.rs",
+                    "filename": "src/provider/static_config.rs",
                     "id_hash": "",
                     "summary": "The code defines a constant for a request timeout without any visible issues or security threats. However, the usage of 'pub(crate) (crate) const' could be improved for better code maintainability.",
                     "file_rag_status": "Green",
@@ -257,7 +258,7 @@ mod tests {
                         {
                             "code": "pub(crate) (crate) const API_TIMEOUT: Duration = Duration::from_secs(30);",
                             "suggestion": "Consider using a configuration file or environment variables for API_TIMEOUT to allow for flexibility without recompilation.",
-                            "example": "Implement a function to load the timeout from an environment variable or a configuration file."
+                            "improvement_details": "Implement a function to load the timeout from an environment variable or a configuration file."
                         }
                     ],
                     "security_issues": []
@@ -266,11 +267,11 @@ mod tests {
         let improvement = Improvement {
             code: "pub(crate) (crate) const API_TIMEOUT: Duration = Duration::from_secs(30);".to_string(),
             suggestion: "Consider using a configuration file or environment variables for API_TIMEOUT to allow for flexibility without recompilation.".to_string(),
-            example: "Implement a function to load the timeout from an environment variable or a configuration file.".to_string(),
+            improvement_details: "Implement a function to load the timeout from an environment variable or a configuration file.".to_string(),
         };
 
         let expected_filereview: FileReview = FileReview {
-            filename: "/Users/avastmick/repos/cosmonaut-code/src/provider/static_config.rs".to_string(),
+            filename: "src/provider/static_config.rs".to_string(),
             id_hash: Some("".to_string()),
             summary:"The code defines a constant for a request timeout without any visible issues or security threats. However, the usage of 'pub(crate) (crate) const' could be improved for better code maintainability.".to_string(),
             file_rag_status: RAGStatus::Green,

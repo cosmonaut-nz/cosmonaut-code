@@ -3,14 +3,14 @@
 //! This is the location to 'tune' the prompts using something like 'Step-Back' or similar
 //! The prompt can be specific to a provider
 //!
-//!
+// TODO move into a JSON file and load from there
 
 use crate::provider::api::{ProviderCompletionMessage, ProviderMessageRole};
 use serde::{Deserialize, Serialize};
 
 const FILE_REVIEW_SCHEMA: &str = include_str!("../provider/specification/file_review.schema.json");
 
-const LANGUAGE_USED: &str = "Use British English";
+const LANGUAGE_USED: &str = "Use British English for all your reponses";
 const JSON_HANDLING_ADVICE: &str = r#"Provide your analysis strictly in valid JSON format. 
                                     Strictly escape any characters within your response strings that will create invalid JSON, such as \" - i.e., double quotes. 
                                     Never use comments in your JSON. 
@@ -38,6 +38,10 @@ impl PromptData {
         Self {
             id: None,
             messages: vec![
+                ProviderCompletionMessage {
+                    role: ProviderMessageRole::System,
+                    content: LANGUAGE_USED.to_string(),
+                },
                 ProviderCompletionMessage {
                     role: ProviderMessageRole::System,
                     content: "As an expert code reviewer with comprehensive knowledge in software development standards, review the following code.".to_string(),
