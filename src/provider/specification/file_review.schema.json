@@ -1,7 +1,7 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "title": "FileReview",
-    "description": "A file review object that captures the elements of the review.",
+    "description": "A source file review data object that captures the elements of the review.",
     "type": "object",
     "properties": {
         "filename": {
@@ -27,7 +27,7 @@
             "items": {
                 "$ref": "#/$defs/improvement"
             },
-            "description": "A list of non-critical code improvements that will improve code quality, readability and maintainability, giving a suggestion and example for each"
+            "description": "A list of non-critical code improvements that will improve code quality, readability and maintainability, giving a suggestion and concrete actionable example for each"
         },
         "statistics": {
             "$ref": "#/$defs/languageFileType",
@@ -44,7 +44,7 @@
         },
         "summary": {
             "type": "string",
-            "description": "A brief and concise summary of what the file functionally does and of the findings during the code review ensuring that the summary reflects the findings, such as security_issues, errors or improvements."
+            "description": "A brief and concise summary of what the source file functionally does and of the findings during the code review ensuring that the summary reflects the findings, such as security_issues, errors or improvements."
         }
     },
     "required": [
@@ -112,21 +112,21 @@
             "properties": {
                 "code": {
                     "type": "string",
-                    "description": "Where in the code the improvement can be made. Include line of code"
+                    "description": "Where in the code improvement can be made. Include the line of code as a snippet. Include the line number"
                 },
                 "suggestion": {
                     "type": "string",
-                    "description": "A description of the suggested improvement to the code"
+                    "description": "A suggested improvement to the code, why and what can be done"
                 },
-                "example": {
+                "improvement_details": {
                     "type": "string",
-                    "description": "An example of how to make the improvement"
+                    "description": "Code that will make the improvement. Ensure the code is functionally complete and can be easily implemented in the source file you have reviewed. The code MUST align with the language of the source file"
                 }
             },
             "required": [
                 "code",
                 "suggestion",
-                "example"
+                "improvement_details"
             ]
         },
         "languageFileType": {

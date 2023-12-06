@@ -66,9 +66,7 @@ pub(crate) async fn assess_codebase(
 
     let mut overall_file_count = 0;
 
-    // Iterate through the files in the repository that are not blacklisted or not relevant
     for entry in get_files_from_repository(&repository_root, &blacklisted_dirs) {
-        // This holds hard stats on the file, note that the LLM does attempt to fill in some of this, but often gets it wrong.
         let result: Option<FileInfo> =
             get_file_info(&entry, &repository_root).and_then(|file_info| {
                 analyse_file_language(&file_info, &lc, &rules, &docs).map(
@@ -87,7 +85,6 @@ pub(crate) async fn assess_codebase(
         #[cfg(debug_assertions)]
         if settings.is_developer_mode() {
             if let Some(max_count) = settings.developer_mode.as_ref().unwrap().max_file_count {
-                // To make JSON config easier, a negative max_file_count ignores
                 if max_count >= 0 && overall_file_count >= max_count {
                     continue;
                 }
@@ -98,43 +95,41 @@ pub(crate) async fn assess_codebase(
             overall_file_count += 1;
             update_language_breakdown(&mut breakdown, &file_info);
 
-            let file_name_str = match file_info.name.to_str() {
-                Some(name) => name,
-                None => {
-                    error!(
-                        "File name, {:?}, is not valid UTF-8, skipping.",
-                        entry.file_name()
-                    );
-                    continue;
-                }
-            };
-            let contents_str = match file_info.contents.to_str() {
-                Some(contents) => contents,
-                None => {
+            if let Some(file_name_str) = file_info.name.to_str() {
+                if let Some(contents_str) = file_info.contents.to_str() {
+                    match review_file(
+                        &settings,
+                        &file_name_str.to_string(),
+                        &contents_str.to_string(),
+                    )
+                    .await
+                    {
+                        Ok(Some(mut reviewed_file)) => {
+                            update_review_breakdown(
+                                &mut review_breakdown,
+                                &mut reviewed_file,
+                                &file_info,
+                            );
+                            review.add_file_review(reviewed_file);
+                        }
+                        Ok(None) => warn!("No review actioned. None returned from 'review_file'"),
+                        Err(e) => return Err(e),
+                    }
+                } else {
                     error!(
                         "Contents of the code file, {:?}, are not valid UTF-8, skipping.",
                         entry.file_name()
                     );
-                    continue;
                 }
-            };
-            match review_file(
-                &settings,
-                &file_name_str.to_string(),
-                &contents_str.to_string(),
-            )
-            .await
-            {
-                Ok(Some(mut reviewed_file)) => {
-                    update_review_breakdown(&mut review_breakdown, &mut reviewed_file, &file_info);
-                    review.add_file_review(reviewed_file);
-                }
-                Ok(None) => warn!("No review actioned. None returned from 'review_file'"),
-                Err(e) => return Err(e),
+            } else {
+                error!(
+                    "File name, {:?}, is not valid UTF-8, skipping.",
+                    entry.file_name()
+                );
             }
         }
     }
-    // Finalise the review and close out
+
     match finalise_review(
         &mut review,
         overall_file_count,
