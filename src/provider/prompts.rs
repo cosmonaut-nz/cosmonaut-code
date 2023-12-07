@@ -3,19 +3,20 @@
 //! This is the location to 'tune' the prompts using something like 'Step-Back' or similar
 //! The prompt can be specific to a provider
 //!
-// TODO move into a JSON file and load from there
-
 use crate::provider::api::{ProviderCompletionMessage, ProviderMessageRole};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use std::collections::HashMap;
 
 const FILE_REVIEW_SCHEMA: &str = include_str!("../provider/specification/file_review.schema.json");
+const CODE_REVIEW_PROMPT: &str = include_str!("../provider/prompts/code_review.json");
+const SECURITY_REVIEW_PROMPT: &str = include_str!("../provider/prompts/security_review.json");
+#[allow(dead_code)]
+const README_SUMMARY_PROMPT: &str = include_str!("../provider/prompts/readme_summary.json");
+const REPOSITORY_SUMMARY_PROMPT: &str = include_str!("../provider/prompts/repository_summary.json");
 
-const LANGUAGE_USED: &str = "Use British English for all your reponses";
-const JSON_HANDLING_ADVICE: &str = r#"Provide your analysis strictly in valid JSON format. 
-                                    Strictly escape any characters within your response strings that will create invalid JSON, such as \" - i.e., double quotes. 
-                                    Never use comments in your JSON. 
-                                    Ensure that your output exactly conforms to the following JSON Schema 
-                                    and you follow exactly the instructions provided in "description" fields."#;
+const LANGUAGE: &str = "British English";
 
 /// Holds the id and [`Vec`] of [`ProviderCompletionMessage`]s
 #[derive(Serialize, Deserialize, Debug)]
@@ -34,151 +35,151 @@ impl PromptData {
         self.messages.push(user_message);
     }
     /// Gets a specific prompt for a given provider
-    pub(crate) fn get_code_review_prompt() -> Self {
-        Self {
-            id: None,
-            messages: vec![
-                ProviderCompletionMessage {
-                    role: ProviderMessageRole::System,
-                    content: LANGUAGE_USED.to_string(),
-                },
-                ProviderCompletionMessage {
-                    role: ProviderMessageRole::System,
-                    content: "As an expert code reviewer with comprehensive knowledge in software development standards, review the following code.".to_string(),
-                },
-                ProviderCompletionMessage {
-                    role: ProviderMessageRole::System,
-                    content: r#"Focus on identifying critical errors, best practice violations, and security vulnerabilities.
-                                Do not generalise; you link your statements to the code; you must state 'is' or 'will', not 'may' or 'shall'; 
-                                it must be specific to the text of the code you are reviewing.
-                                Exclude trivial issues like formatting errors or TODO comments. Use your expertise to provide insightful and actionable feedback.
-                            "#.to_string(),
-                },
-                ProviderCompletionMessage {
-                    role: ProviderMessageRole::System,
-                    content: JSON_HANDLING_ADVICE.to_string(),
-                },
-                ProviderCompletionMessage {
-                    role: ProviderMessageRole::System,
-                    content: FILE_REVIEW_SCHEMA.to_string(),
-                },
-                // TODO: add in fake "replay" to show previous user/assistant interactions and quality of output on a file
-            ],
-        }
+    pub(crate) fn get_code_review_prompt() -> Result<Self, Box<dyn std::error::Error>> {
+        let json_content = create_content(&[
+            ("language", LANGUAGE),
+            ("file_review_schema", FILE_REVIEW_SCHEMA),
+        ]);
+        let result = substitute_tokens(CODE_REVIEW_PROMPT, &json_content)?;
+        let messages = get_messages_from(&result)?;
+        Ok(Self { id: None, messages })
     }
-    pub(crate) fn get_security_review_prompt() -> Self {
-        Self {
-            id: None,
-            messages: vec![
-                ProviderCompletionMessage {
-                    role: ProviderMessageRole::System,
-                    content: "As an expert security code reviewer with comprehensive knowledge in software and information security, review the following code.".to_string(),
-                },
-                ProviderCompletionMessage {
-                    role: ProviderMessageRole::System,
-                    content: r#"Focus exclusively on identifying security vulnerabilities and potential security flaws in the code. 
-                                Provide actionable feedback and mitigation strategies for each identified issue.
-                                You do not have to offer improvement recommendations for the code, focus solely on security.
-                                If no errors or security issues are found, the file_rag_status should be 'Green'"#.to_string(),
-                },
-                ProviderCompletionMessage {
-                    role: ProviderMessageRole::System,
-                    content: JSON_HANDLING_ADVICE.to_string(),
-                },
-                ProviderCompletionMessage {
-                    role: ProviderMessageRole::System,
-                    content: FILE_REVIEW_SCHEMA.to_string(),
-                },
-                // TODO: add in fake "replay" to show previous user/assistant interactions and quality of output on a file
-            ],
-        }
+    pub(crate) fn get_security_review_prompt() -> Result<Self, Box<dyn std::error::Error>> {
+        let json_content = create_content(&[
+            ("language", LANGUAGE),
+            ("file_review_schema", FILE_REVIEW_SCHEMA),
+        ]);
+        let result = substitute_tokens(SECURITY_REVIEW_PROMPT, &json_content)?;
+        let messages = get_messages_from(&result)?;
+        Ok(Self { id: None, messages })
     }
     /// gets a [`PromptData`] for a LLM to summarise the README in a repository for the RepositoryReview.repository_purpose field
-    pub(crate) fn _get_readme_summary_prompt() -> Self {
-        Self {
-            id: None,
-            messages: vec![
-                ProviderCompletionMessage {
-                    role: ProviderMessageRole::System,
-                    content: r#"As an expert software code reviewer with comprehensive knowledge in software and information security, 
-                                summarise the following documentation."#.to_string(),
-                },
-                ProviderCompletionMessage {
-                    role: ProviderMessageRole::System,
-                    content: r#"Keep the summary very brief and concise, while still clearly describing the purpose of the repository."#.to_string(),
-                },
-            ],
-        }
+    // TODO not yet used. Part of the documentation review module
+    pub(crate) fn _get_readme_summary_prompt() -> Result<Self, Box<dyn std::error::Error>> {
+        let json_content = create_content(&[("language", LANGUAGE)]);
+        let result = substitute_tokens(README_SUMMARY_PROMPT, &json_content)?;
+        let messages = get_messages_from(&result)?;
+        Ok(Self { id: None, messages })
     }
     /// gets a [`PromptData`] for a LLM to summarise the overall review from a [`Vec`] of [`FileReview`]  
     #[allow(dead_code)]
-    pub(crate) fn get_overall_summary_prompt() -> Self {
-        Self {
-            id: None,
-            messages: vec![
-                ProviderCompletionMessage {
-                    role: ProviderMessageRole::System,
-                    content: LANGUAGE_USED.to_string(),
-                },
-                ProviderCompletionMessage {
-                    role: ProviderMessageRole::System,
-                    content: r"As an expert software code reviewer with comprehensive knowledge in software and information security, 
-                                you are asked to create an extract summary of a set of findings from the detailed review of a software repository. 
-                                The findings are given per source file and separated by a linebreak ('\n).
-                                The audience for this summary is executive level and non-technical. No technical terms should be used; use simple, clear terms.
-                                Keep the summary at a maximum 1000 characters.
-                                ".to_string(),
-                },
-                ProviderCompletionMessage {
-                    role: ProviderMessageRole::System,
-                    content: r#"Provide paragraphs for four sections. These sections are. 
-                                Overview: the overall purpose of the repository; 
-                                Security: a brief overview of security; 
-                                Quality: a brief overview of code quality. 
-                                Conclusion.
-                                Each section MUST be under 250 characters in length.
-                                DO NOT mention file names, (e.g., 'build.rs', or 'index.js', or 'helpers.py', 'src/test/test.ts', etc.).
-                                Nor use technical terms or where the name is technical."#.to_string(),
-                },
-                ProviderCompletionMessage {
-                    role: ProviderMessageRole::System,
-                    content: r"Do not use Markdown as output. 
-                                Output in plaintext with clear formatting. 
-                                DO NOT use lists, such as indented bullets or item numbering.
-                                ".to_string(),
-                },
-                // Fake "replaying" previous interactions to show the level of summary.
-                ProviderCompletionMessage {
-                    role: ProviderMessageRole::User,
-                    content: r#"Concisely summarise the following: 
-                                The code in 'build.rs' does not appear to contain critical errors or security issues. 
-                                The use of imports could be refined, and the string conversion for static strings could be optimized for better code quality and readability.
-                                The code contains a high severity security issue related to the potential leaking of API keys, and a couple of errors that impact the clarity and security of the configuration data handling. 
-                                The code does not adhere strictly to the best practices regarding secure configuration management. 
-                                An improvement is suggested to enhance the security by modifying the Debug trait implementation for sensitive data.
-                                The Rust source code provides prompt templates for a chat-based language model. There are no critical errors or security vulnerabilities within the code. 
-                                Minor improvements suggested include handling JSON schemas and multi-line strings separately from the code, 
-                                renaming a public function to adhere to naming conventions, and enhancing a documentation comment for clarity.
-                                The code could lead to security vulnerabilities due to the exposure of sensitive API keys and lack of a backoff strategy in API request retries. 
-                                Code improvements suggested include better error handling patterns, reorganizing the enumeration definition into its separate module, 
-                                and deriving the Debug trait for better logging support. The use of wildcard imports should be replaced with specific imports for clarity and maintainability.
-                                The code review did not find any critical errors or security issues. Suggested improvements focus on adding documentation, implementing better error handling, 
-                                and refactoring the trait for conversion functions to accept iterators for greater flexibility.
-                                "#.to_string(),
-                },
-                ProviderCompletionMessage {
-                    role: ProviderMessageRole::Assistant,
-                    content: r#"The codebase demonstrates a satisfactory level of code quality with no critical errors or security issues found. 
-                                However, security-wise, there is a concerning issue as the code risks leaking API keys, which is a high risk vulnerability.
-                                There is room for optimisation and refinement to enhance code quality and readability. Configuration data handling could be improved, 
-                                as it does not fully comply with secure configuration management best practices. 
-                                Significant improvements to documentation for higher clarity and improved maintainability."#.to_string(),
-                },
-                ProviderCompletionMessage {
-                    role: ProviderMessageRole::User,
-                    content: "Good summary.".to_string(), 
-                },
-            ],
+    pub(crate) fn get_overall_summary_prompt() -> Result<Self, Box<dyn std::error::Error>> {
+        let json_content = create_content(&[("language", LANGUAGE)]);
+        let result = substitute_tokens(REPOSITORY_SUMMARY_PROMPT, &json_content)?;
+        let messages = get_messages_from(&result)?;
+        Ok(Self { id: None, messages })
+    }
+}
+/// Creates a [`HashMap`] from a slice of tuples
+fn create_content(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+    pairs
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect()
+}
+/// Gets a [`Vec`] of [`ProviderCompletionMessage`]s from a JSON string
+fn get_messages_from(json_data: &str) -> Result<Vec<ProviderCompletionMessage>, serde_json::Error> {
+    let v: Value = serde_json::from_str(json_data)?;
+    let messages: Vec<ProviderCompletionMessage> = serde_json::from_value(v["messages"].clone())?;
+
+    Ok(messages)
+}
+/// Substitutes tokens in a JSON string with values from a [`HashMap`].
+/// Usage: `substitute_tokens(json_str, &[("token", "value")])`
+fn substitute_tokens(
+    json_str: &str,
+    content: &HashMap<String, String>,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let mut v: Value = serde_json::from_str(json_str)?;
+
+    let re = Regex::new(r"\{\{(\w+)\}\}")?;
+
+    if let Some(array) = v["messages"].as_array_mut() {
+        for message in array {
+            if let Some(content_str) = message["content"].as_str() {
+                let mut new_content = content_str.to_string();
+                for cap in re.captures_iter(content_str) {
+                    if let Some(replacement) = content.get(&cap[1]) {
+                        new_content = new_content.replace(&cap[0], replacement);
+                    }
+                }
+                message["content"] = json!(new_content);
+            }
         }
+    }
+
+    Ok(v.to_string())
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_add_user_message_prompt() {
+        let mut prompt_data = PromptData {
+            id: Some("123".to_string()),
+            messages: vec![ProviderCompletionMessage {
+                role: ProviderMessageRole::User,
+                content: "Hello".to_string(),
+            }],
+        };
+
+        prompt_data.add_user_message_prompt("World".to_string());
+
+        assert_eq!(prompt_data.messages.len(), 2);
+        assert_eq!(prompt_data.messages[1].content, "World");
+    }
+    #[test]
+    fn test_create_content() {
+        let pairs = &[("language", "English"), ("file_review_schema", "Schema")];
+        let content = create_content(pairs);
+
+        assert_eq!(content.len(), 2);
+        assert_eq!(content["language"], "English");
+        assert_eq!(content["file_review_schema"], "Schema");
+    }
+    #[test]
+    fn test_get_messages_from() {
+        let json_data = r#"
+            {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": "Hello"
+                    },
+                    {
+                        "role": "system",
+                        "content": "Welcome"
+                    }
+                ]
+            }
+        "#;
+
+        let messages = get_messages_from(json_data).unwrap();
+
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].role, ProviderMessageRole::User);
+        assert_eq!(messages[0].content, "Hello");
+        assert_eq!(messages[1].role, ProviderMessageRole::System);
+        assert_eq!(messages[1].content, "Welcome");
+    }
+    #[test]
+    fn test_substitute_tokens() {
+        let json_str = r#"
+            {
+                "messages": [
+                    {
+                        "role": "User",
+                        "content": "{{name}}"
+                    }
+                ]
+            }
+        "#;
+
+        let mut content = HashMap::new();
+        content.insert("name".to_string(), "John".to_string());
+
+        let result = substitute_tokens(json_str, &content).unwrap();
+
+        assert!(result.contains("John"));
     }
 }

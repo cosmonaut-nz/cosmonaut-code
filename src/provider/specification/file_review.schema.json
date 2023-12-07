@@ -13,7 +13,7 @@
             "items": {
                 "$ref": "#/$defs/error"
             },
-            "description": "A list of syntatic or idiomatic errors (not security related) found in the code giving the issue and potential resolution for each. Where the code does not meet language standards, best practice or clearly deviates from DRY or SOLID principlesY"
+            "description": "A list of syntatic or idiomatic errors (not security related) found in the code giving the issue and potential resolution for each. Where the code does not meet language standards, best practice or clearly deviates from DRY or SOLID principles"
         },
         "security_issues": {
             "type": "array",
