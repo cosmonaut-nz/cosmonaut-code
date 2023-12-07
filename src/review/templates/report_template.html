@@ -197,7 +197,7 @@
                         class="{{#if (eq file_rag_status 'Green')}}status-green{{/if}}{{#if (eq file_rag_status 'Amber')}}status-amber{{/if}}{{#if (eq file_rag_status 'Red')}}status-red{{/if}}">
                         {{file_rag_status}}
                     </span></p>
-
+                {{#if errors}}
                 <button type="button" class="collapsible"><strong>Security Issues:</strong></button>
                 <div class="content">
                     {{#each security_issues}}
@@ -209,6 +209,7 @@
                     </div>
                     {{/each}}
                 </div>
+                {{/if}}
                 {{#if errors}}
                 <button type="button" class="collapsible"><strong>Errors:</strong></button>
                 <div class="content">

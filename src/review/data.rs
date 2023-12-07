@@ -86,11 +86,11 @@ pub(crate) struct FileReview {
     pub(crate) summary: String,            // A summary of the findings of the review
     pub(crate) file_rag_status: RAGStatus, // In {Red, Amber, Green}
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) security_issues: Option<Vec<SecurityIssue>>, // A list of security issues, giving the threat and mitigation for each
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) errors: Option<Vec<Error>>, // A list of errors found in the code giving the issue and potential resolution for each
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) improvements: Option<Vec<Improvement>>, // A list of improvements, giving a suggestion and example for each
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) security_issues: Option<Vec<SecurityIssue>>, // A list of security issues, giving the threat and mitigation for each
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) statistics: Option<LanguageFileType>, // A list of statistics (e.g., lines of code, functions, methods, etc.)
 }
@@ -227,7 +227,6 @@ impl Contributor {
         }
     }
 }
-///
 /// Deserializes a str into a ['FileReview'] struct.
 ///
 /// # Parameters
@@ -236,7 +235,7 @@ impl Contributor {
 ///
 /// # Returns
 ///
-/// * A ['FileReview'] struct
+/// * A [`FileReview`] struct
 ///
 pub(crate) fn deserialize_file_review(json_str: &str) -> Result<FileReview, serde_json::Error> {
     serde_json::from_str(json_str)
