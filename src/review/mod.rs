@@ -258,11 +258,7 @@ async fn finalise_review(
             .unwrap_or_else(|| "UNKNOWN".to_string());
     review.repository_type(Some(predominant_language));
 
-    // Date stamp the review
-    let now_utc: DateTime<Utc> = Utc::now();
-    let now_local = now_utc.with_timezone(&Local);
-    let review_date = now_local.format("%H:%M, %d/%m/%Y").to_string();
-    review.date(review_date);
+    review.date(get_review_date());
 
     review.repository_purpose(None); // TODO Implement if required
     review.repository_rag_status(get_overall_rag_for(review));
@@ -312,8 +308,8 @@ fn get_prompt_data_based_on_review_type(
     settings: &Settings,
 ) -> Result<Option<PromptData>, Box<dyn std::error::Error>> {
     match settings.review_type {
-        ReviewType::General => Ok(Some(PromptData::get_code_review_prompt())),
-        ReviewType::Security => Ok(Some(PromptData::get_security_review_prompt())),
+        ReviewType::General => PromptData::get_code_review_prompt().map(Some),
+        ReviewType::Security => PromptData::get_security_review_prompt().map(Some),
         ReviewType::CodeStats => {
             info!("CODE STATISTICS ONLY. Only running code statistics, no review run.");
             Ok(None)
@@ -376,7 +372,7 @@ pub(crate) async fn summarise_review_breakdown(
     info!("Creating repository summary statement");
 
     let provider: &ProviderSettings = get_provider(settings);
-    let mut prompt_data: PromptData = PromptData::get_overall_summary_prompt();
+    let mut prompt_data: PromptData = PromptData::get_overall_summary_prompt()?;
 
     debug!("Input review summaries: {}", review_breakdown.summary);
 
@@ -528,6 +524,14 @@ fn strip_artifacts_from(orig_json_str: &str) -> Result<String, &'static str> {
         );
         Err("No valid JSON found")
     }
+}
+/// Gets the current time and date as a string
+fn get_review_date() -> String {
+    // Date stamp the review
+    let now_utc: DateTime<Utc> = Utc::now();
+    let now_local = now_utc.with_timezone(&Local);
+    let review_date = now_local.format("%H:%M, %d/%m/%Y").to_string();
+    review_date
 }
 /// A utility to check the JSON sent back from the LLM
 #[cfg(debug_assertions)]

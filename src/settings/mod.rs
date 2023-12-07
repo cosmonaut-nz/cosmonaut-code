@@ -149,13 +149,11 @@ impl Settings {
     }
 }
 #[derive(Debug, Serialize, Deserialize, Default, PartialEq)]
+#[serde(rename_all = "lowercase")]
 pub(crate) enum ReviewType {
-    #[serde(rename = "general")]
     #[default]
     General,
-    #[serde(rename = "security")]
     Security,
-    #[serde(rename = "stats")]
     CodeStats,
 }
 

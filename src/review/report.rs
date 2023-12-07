@@ -136,15 +136,13 @@ fn render_pdf(
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(rename_all = "lowercase")]
+
 pub(crate) enum OutputType {
-    #[serde(rename = "json")]
     #[default]
     Json,
-    #[serde(rename = "pdf")]
     Pdf,
-    #[serde(rename = "html")]
     Html,
-    #[serde(rename = "all")]
     All,
 }
 impl fmt::Display for OutputType {

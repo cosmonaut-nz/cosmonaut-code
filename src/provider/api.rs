@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 // Enum to represent the role of a message in a conversation.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "lowercase")]
 pub(crate) enum ProviderMessageRole {
     User,
     System,
