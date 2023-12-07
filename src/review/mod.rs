@@ -23,7 +23,7 @@ use crate::review::data::{
 };
 use crate::review::report::create_report;
 use crate::review::tools::{get_git_contributors, is_not_blacklisted};
-use crate::settings::{ProviderSettings, ReviewType, Settings};
+use crate::settings::{ProviderSettings, ReviewType, ServiceSettings, Settings};
 use chrono::{DateTime, Local, Utc};
 use log::{debug, error, info, warn};
 use regex::Regex;
@@ -48,11 +48,7 @@ pub(crate) async fn assess_codebase(
     let mut review = initialise_repository_review(&settings)?;
     let repository_root = validate_repository(PathBuf::from(&settings.repository_path))?;
 
-    let provider: &ProviderSettings = get_provider(&settings);
-    review.generative_ai_service_and_model(Some(format!(
-        "provider: {}, service: {}, model: {}",
-        provider.name, provider.service, provider.model
-    )));
+    review.generative_ai_service_and_model(get_service_and_model(&settings));
     info!(
         "Reviewing: {}, with {}",
         review.repository_name,
@@ -144,6 +140,15 @@ pub(crate) async fn assess_codebase(
     };
 
     create_report(&settings, &review)
+}
+
+fn get_service_and_model(settings: &Settings) -> Option<String> {
+    let provider: &ProviderSettings = get_provider(settings);
+    let service: &ServiceSettings = get_service(provider);
+    Some(format!(
+        "provider: {}, service: {}, model: {}",
+        provider.name, service.name, service.model
+    ))
 }
 
 /// Initialises a new [`RepositoryReview`] according to the configured name from path
@@ -461,6 +466,12 @@ fn get_provider(settings: &Settings) -> &crate::settings::ProviderSettings {
                                               .expect("Either a default or chosen provider should be configured in \'default.json\'. \
                                               Either none was found, or the default provider did not match any name in the configured providers list.");
     provider
+}
+fn get_service(provider: &ProviderSettings) -> &ServiceSettings {
+    provider
+        .get_active_service()
+        .expect("Either a default or chosen service should be configured in \'default.json\'. \
+        Either none was found, or the default service did not match any name in the provider services list.")
 }
 /// Gets the actual repository name from the path
 fn extract_repository_name(path_str: &str) -> Result<&str, PathError> {

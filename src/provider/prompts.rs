@@ -34,7 +34,6 @@ impl PromptData {
         };
         self.messages.push(user_message);
     }
-    /// Gets a specific prompt for a given provider
     pub(crate) fn get_code_review_prompt() -> Result<Self, Box<dyn std::error::Error>> {
         let json_content = create_content(&[
             ("language", LANGUAGE),

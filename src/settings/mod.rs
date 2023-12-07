@@ -1,9 +1,7 @@
-//!
 //! Settings for setting up:
 //!     Service providers {OpenAI, Google, Anthropic, Meta, Other...}
 //!     LLM API access
 //!     Repository directory/folder location
-//!
 //!
 use config::FileFormat;
 use config::{Config, ConfigError, File};
@@ -18,11 +16,8 @@ use crate::review::report::OutputType;
 const DEFAULT_CONFIG: &str = include_str!("../../settings/default.json");
 pub(crate) const ENV_SENSITIVE_SETTINGS_PATH: &str = "SENSITIVE_SETTINGS_PATH";
 
-/// struct to hold the configuration
-///
 #[derive(Serialize, Deserialize, PartialEq)]
 pub(crate) struct Settings {
-    // General configuration fields
     pub(crate) providers: Vec<ProviderSettings>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) chosen_provider: Option<String>,
@@ -90,10 +85,10 @@ impl fmt::Display for Settings {
 /// `review_type` and `output_type` have default values, but other fields must be explicitly set.
 impl Settings {
     pub(crate) fn new() -> Result<Self, ConfigError> {
-        let local_settings_path: Option<String> = env::var(ENV_SENSITIVE_SETTINGS_PATH).ok();
         let config_builder: config::ConfigBuilder<config::builder::DefaultState> =
             Config::builder().add_source(File::from_str(DEFAULT_CONFIG, FileFormat::Json));
 
+        let local_settings_path: Option<String> = env::var(ENV_SENSITIVE_SETTINGS_PATH).ok();
         let config_builder: config::ConfigBuilder<config::builder::DefaultState> =
                 // try to get sensitive configuration data can be sourced as an env variable
             if let Some(path) = local_settings_path {
@@ -148,6 +143,71 @@ impl Settings {
         self.developer_mode.is_some()
     }
 }
+///
+#[derive(Serialize, Deserialize, PartialEq)]
+pub(crate) struct ProviderSettings {
+    pub(crate) name: String,
+    pub(crate) services: Vec<ServiceSettings>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) chosen_service: Option<String>,
+    pub(crate) default_service: String,
+    pub(crate) api_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) api_timeout: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) max_tokens: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) max_retries: Option<i64>,
+}
+impl ProviderSettings {
+    pub(crate) fn get_active_service(&self) -> Result<&ServiceSettings, ServiceError> {
+        let service_name = self
+            .chosen_service
+            .as_ref()
+            .unwrap_or(&self.default_service);
+        self.services
+            .iter()
+            .find(|s| s.name == *service_name)
+            .ok_or_else(|| ServiceError::NotFound(service_name.clone()))
+    }
+}
+/// Custom Debug implementation for ProviderSettings
+impl fmt::Debug for ProviderSettings {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ProviderSettings")
+            .field("name", &self.name)
+            .field("services", &self.services)
+            .field("api_url", &self.api_url)
+            .field("api_timeout", &self.api_timeout)
+            .field("max_tokens", &self.max_tokens)
+            .finish()
+    }
+}
+/// Custom Display implementation for ProviderSettings
+impl fmt::Display for ProviderSettings {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ProviderSettings")
+            .field("name", &self.name)
+            .field("services", &self.services)
+            .field("api_url", &self.api_url)
+            .field("api_timeout", &self.api_timeout)
+            .field("max_tokens", &self.max_tokens)
+            .finish()
+    }
+}
+#[derive(Debug)]
+pub(crate) enum ProviderError {
+    NotFound(String),
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub(crate) struct ServiceSettings {
+    pub(crate) name: String,
+    pub(crate) model: String,
+}
+pub(crate) enum ServiceError {
+    NotFound(String),
+}
 #[derive(Debug, Serialize, Deserialize, Default, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum ReviewType {
@@ -173,23 +233,6 @@ pub(crate) struct DeveloperMode {
     pub(crate) test_path: bool,
     pub(crate) test_json_file: Option<String>,
 }
-fn default_false() -> bool {
-    true
-}
-
-#[derive(Serialize, Deserialize, PartialEq)]
-pub(crate) struct ProviderSettings {
-    pub(crate) name: String,
-    pub(crate) service: String,
-    pub(crate) model: String,
-    pub(crate) api_url: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) api_timeout: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) max_tokens: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) max_retries: Option<i64>,
-}
 #[derive(Serialize, Deserialize, PartialEq)]
 pub(crate) struct SensitiveSettings {
     pub(crate) api_key: APIKey,
@@ -200,36 +243,7 @@ pub(crate) struct SensitiveSettings {
 }
 #[derive(Serialize, Deserialize, PartialEq)]
 pub(crate) struct APIKey(String); // Sensitive data!
-/// Custom Debug implementation for ProviderSettings
-impl fmt::Debug for ProviderSettings {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ProviderSettings")
-            .field("name", &self.name)
-            .field("service", &self.service)
-            .field("model", &self.model)
-            .field("api_url", &self.api_url)
-            .field("api_timeout", &self.api_timeout)
-            .field("max_tokens", &self.max_tokens)
-            .finish()
-    }
-}
-/// Custom Display implementation for ProviderSettings
-impl fmt::Display for ProviderSettings {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ProviderSettings")
-            .field("name", &self.name)
-            .field("service", &self.service)
-            .field("model", &self.model)
-            .field("api_url", &self.api_url)
-            .field("api_timeout", &self.api_timeout)
-            .field("max_tokens", &self.max_tokens)
-            .finish()
-    }
-}
-#[derive(Debug)]
-pub(crate) enum ProviderError {
-    NotFound(String),
-}
+
 /// Custom error for misconfiguration of provider
 impl fmt::Display for ProviderError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -238,6 +252,21 @@ impl fmt::Display for ProviderError {
         }
     }
 }
+impl fmt::Display for ServiceError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ServiceError::NotFound(name) => write!(f, "ServiceSettings not found: {}", name),
+        }
+    }
+}
+impl std::fmt::Debug for ServiceError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotFound(arg0) => f.debug_tuple("NotFound").field(arg0).finish(),
+        }
+    }
+}
+impl std::error::Error for ServiceError {}
 /// Custom Debug implementation for SensitiveSettings to prevent accidental printing of secret
 impl fmt::Debug for SensitiveSettings {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -260,6 +289,10 @@ impl APIKey {
     }
 }
 
+fn default_false() -> bool {
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -269,10 +302,15 @@ mod tests {
 
     #[test]
     fn test_provider_settings_serialization() {
-        let provider = ProviderSettings {
-            name: "OpenAI".to_string(),
-            service: "GPT-3".to_string(),
+        let services = vec![ServiceSettings {
+            name: "GPT-3".to_string(),
             model: "text-davinci-003".to_string(),
+        }];
+        let provider = ProviderSettings {
+            name: "openai".to_string(),
+            services,
+            chosen_service: None,
+            default_service: "gpt-3.5".to_string(),
             api_url: "https://api.openai.com".to_string(),
             api_timeout: Some(60),
             max_tokens: Some(2048),
@@ -280,22 +318,30 @@ mod tests {
         };
 
         let serialized = serde_json::to_string(&provider).unwrap();
-        assert!(serialized.contains("OpenAI"));
+        assert!(serialized.contains("openai"));
     }
 
     #[test]
     fn test_provider_settings_deserialization() {
         let json = r#"{
-            "name": "OpenAI",
-            "service": "GPT-3",
-            "model": "text-davinci-003",
-            "api_url": "https://api.openai.com",
-            "api_timeout": 60,
-            "max_tokens": 2048
+            "name": "openai",
+            "services": [
+                {
+                    "name": "gpt-4",
+                    "model": "gpt-4-1106-preview"
+                },
+                {
+                    "name": "gpt-3.5",
+                    "model": "gpt-3.5-turbo-1106"
+                }
+            ],
+            "default_service": "gpt-3.5",
+            "api_url": "https://api.openai.com/v1/chat/completions",
+            "max_retries": 3
         }"#;
 
         let provider: ProviderSettings = serde_json::from_str(json).unwrap();
-        assert_eq!(provider.name, "OpenAI");
+        assert_eq!(provider.name, "openai");
     }
 
     #[test]
@@ -352,6 +398,7 @@ mod tests {
             "providers": [],
             "chosen_provider": null,
             "default_provider": "SomeProvider",
+            "default_service": "SomeService",
             "output_type": "pdf",
             "review_type": "general",
             "repository_path": "some/path",
@@ -378,18 +425,23 @@ mod tests {
 
     #[test]
     fn test_get_active_provider() {
+        let services = vec![ServiceSettings {
+            name: "GPT-3".to_string(),
+            model: "gpt-3.5".to_string(),
+        }];
         let settings = Settings {
             providers: vec![ProviderSettings {
-                name: "OpenAI".to_string(),
-                service: "GPT-3".to_string(),
-                model: "text-davinci-003".to_string(),
+                name: "openai".to_string(),
+                services,
+                chosen_service: None,
+                default_service: "gpt-3.5".to_string(),
                 api_url: "https://api.openai.com".to_string(),
                 api_timeout: Some(60),
                 max_tokens: Some(2048),
                 max_retries: Some(5),
             }],
             chosen_provider: None,
-            default_provider: "OpenAI".to_string(),
+            default_provider: "openai".to_string(),
             output_type: OutputType::Json,
             review_type: ReviewType::General,
             review_cycles: None,
@@ -403,6 +455,6 @@ mod tests {
             developer_mode: None,
         };
         let provider = settings.get_active_provider().unwrap();
-        assert_eq!(provider.name, "OpenAI");
+        assert_eq!(provider.name, "openai");
     }
 }

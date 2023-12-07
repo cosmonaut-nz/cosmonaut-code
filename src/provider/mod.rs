@@ -53,7 +53,7 @@ fn create_api_provider(
 ) -> Result<Box<dyn APIProvider>, Box<dyn std::error::Error>> {
     match provider_settings.name.to_lowercase().as_str() {
         "openai" => Ok(Box::new(OpenAIProvider {
-            model: provider_settings.model.clone(),
+            model: provider_settings.get_active_service()?.model.to_string(),
         })),
         _ => Err(Box::new(std::io::Error::new(
             std::io::ErrorKind::Other,
