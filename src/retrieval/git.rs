@@ -1,4 +1,6 @@
 //! Functions to gather data on the 'git' repository, files and contributors
+
+/// Functions to gather data on the 'git' repository
 pub(crate) mod repository {
     use log::{debug, warn};
     use std::fs;
@@ -52,10 +54,56 @@ pub(crate) mod repository {
     }
 }
 
+/// Functions to gather data on the 'git' files
 pub(crate) mod file {
-    // TODO add in the code frequency functions
+    use git2::Repository;
+
+    pub(crate) fn get_file_change_frequency(
+        repo_path: &str,
+        file_path: &str,
+    ) -> Result<(usize, usize, f32), git2::Error> {
+        let repo = Repository::open(repo_path)?;
+        let mut revwalk = repo.revwalk()?;
+        revwalk.push_head()?;
+
+        let mut total_commits = 0;
+        let mut file_commits = 0;
+
+        for commit_id in revwalk {
+            let commit = repo.find_commit(commit_id?)?;
+            total_commits += 1;
+
+            if commit.parent_count() > 0 {
+                let parent = commit.parent(0)?;
+                let commit_tree = commit.tree()?;
+                let parent_tree = parent.tree()?;
+
+                let diff = repo.diff_tree_to_tree(Some(&parent_tree), Some(&commit_tree), None)?;
+                diff.foreach(
+                    &mut |delta, _| {
+                        let filepath = delta
+                            .new_file()
+                            .path()
+                            .unwrap_or(delta.old_file().path().unwrap());
+                        if filepath.to_str() == Some(file_path) {
+                            file_commits += 1;
+                        }
+                        true
+                    },
+                    None,
+                    None,
+                    None,
+                )?;
+            }
+        }
+
+        let frequency = file_commits as f32 / total_commits as f32;
+
+        Ok((file_commits, total_commits, frequency))
+    }
 }
 
+/// Functions to gather data on the 'git' contributors
 pub(crate) mod contributor {
     use crate::review::data::Contributor;
     use chrono::{DateTime, NaiveDateTime, Utc};

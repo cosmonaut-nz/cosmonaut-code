@@ -46,8 +46,8 @@ pub(crate) async fn assess_codebase(
 ) -> Result<String, Box<dyn std::error::Error>> {
     let mut review = initialise_repository_review(&settings)?;
     let repository_root = validate_repository(PathBuf::from(&settings.repository_path))?;
-
     review.generative_ai_service_and_model(get_service_and_model(&settings));
+
     info!(
         "Reviewing: {}, with {}",
         review.repository_name,
@@ -125,18 +125,14 @@ pub(crate) async fn assess_codebase(
         }
     }
 
-    match finalise_review(
+    finalise_review(
         &mut review,
         overall_file_count,
         &mut review_breakdown,
         &breakdown,
         &settings,
     )
-    .await
-    {
-        Ok(_) => (),
-        Err(e) => return Err(e),
-    };
+    .await?;
 
     create_report(&settings, &review)
 }
