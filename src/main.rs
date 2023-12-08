@@ -6,6 +6,7 @@ mod dev_mode;
 
 mod common;
 mod provider;
+mod retrieval;
 mod review;
 mod settings;
 use log::{error, info};
@@ -28,6 +29,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::process::exit(1);
         }
     };
+    // TODO should have the settings fully loaded and trusted at this point.
+    //      refactor to make usage of settings easier && more aligned with usage.
 
     #[cfg(debug_assertions)]
     {
@@ -44,7 +47,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         } else {
             info!("Taking developer path.");
-            dev_mode::comment_summary::test_summary(&settings).await?;
+
+            dev_mode::_code_frequency::test_code_frequency(&settings)?;
+            // dev_mode::_comment_summary::test_summary(&settings).await?;
         }
     }
 

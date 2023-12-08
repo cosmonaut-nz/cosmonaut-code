@@ -153,38 +153,6 @@ status today is: *"it works, but it is not pretty or very user friendly."*
 - [ ] enable meta llama review of code
 - [ ] comparison of different llms review output on same code (this could be very cool!)
 
-## code
-
-### structure
-
-The code is broken into the following modules:
-
-- `provider` - managing the llm providers and api calls to review code files
-- `review` - managing the review of the repository, including handling the filesystem and reading in of files
-- `settings` - a set of data structures that enable easy application configuration
-- `common` - a set of common utility functions, macros and alike
-
-```plaintext
-.
-├── build.rs
-└── src
-    ├── common
-    │   └── mod.rs
-    ├── main.rs
-    ├── provider
-    │   ├── api.rs
-    │   ├── mod.rs
-    │   └── prompts.rs
-    ├── review
-    │   ├── code.rs
-    │   ├── data.rs
-    │   ├── mod.rs
-    │   ├── report.rs
-    │   └── tools.rs
-    └── settings
-        └── mod.rs
-```
-
 `>_ we are cosmonaut`
 
 _copyright &#169; cosmonaut (new zealand) ltd, 2023_

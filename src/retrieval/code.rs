@@ -1,6 +1,6 @@
 //! contains functionality to look at the codebase and gain insights that will provide
 //! statistics and inputs into subsequent review.
-use crate::review::data::LanguageFileType;
+use crate::review::data::{FileReview, LanguageFileType, RAGStatus, Severity};
 use linguist::{
     container::InMemoryLanguageContainer,
     resolver::{resolve_language_from_content_str, Language, Scope},
@@ -13,8 +13,6 @@ use std::{
     ffi::{OsStr, OsString},
     sync::Arc,
 };
-
-use super::data::{FileReview, RAGStatus, Severity};
 
 pub(crate) mod predefined {
     include!(concat!(env!("OUT_DIR"), "/languages.rs"));
@@ -176,6 +174,7 @@ fn get_file_contents_size(file_contents: impl AsRef<OsStr>) -> Result<u64, &'sta
 }
 
 /// Function to count lines of code in a file, skipping comments
+// TODO: shift to using tokei crate to improve maintainability and accuracy
 fn count_lines_of_code(file_content: impl AsRef<OsString>) -> Result<i64, &'static str> {
     let content_str = file_content
         .as_ref()
@@ -238,5 +237,93 @@ impl LanguageBreakdown {
             }
         }
         types
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_file_contents_size() {
+        let file_contents = "Hello, world!";
+        let result = get_file_contents_size(file_contents);
+        assert_eq!(result, Ok(13));
+    }
+
+    #[test]
+    fn test_count_lines_of_code() {
+        let file_content: OsString = OsString::from(
+            r#"fn main() { // line 1 \n
+                // this comment line doesn't add to the loc\n
+                println!(\"Hello, world!\"); // line 2 \n
+            } // line 3 "#,
+        );
+        let arc_os_string: Arc<OsString> = Arc::new(file_content);
+        let result: Result<i64, &str> = count_lines_of_code(arc_os_string);
+        assert_eq!(result, Ok(3));
+    }
+
+    #[test]
+    fn test_language_breakdown_add_usage() {
+        let mut breakdown = LanguageBreakdown {
+            usages: HashMap::new(),
+            total_size: 0,
+        };
+        breakdown.add_usage("Rust", "rs", 100, 10);
+        breakdown.add_usage("Rust", "toml", 50, 5);
+
+        let expected_usages: HashMap<String, HashMap<String, (u64, i32, i64)>> = [(
+            "Rust".to_string(),
+            [
+                ("rs".to_string(), (100, 1, 10)),
+                ("toml".to_string(), (50, 1, 5)),
+            ]
+            .iter()
+            .cloned()
+            .collect(),
+        )]
+        .iter()
+        .cloned()
+        .collect();
+
+        assert_eq!(breakdown.usages, expected_usages);
+        assert_eq!(breakdown.total_size, 150);
+    }
+
+    #[test]
+    fn test_language_breakdown_to_language_file_types() {
+        let mut breakdown = LanguageBreakdown {
+            usages: HashMap::new(),
+            total_size: 0,
+        };
+        breakdown.add_usage("Rust", "rs", 100, 10);
+        breakdown.add_usage("Rust", "toml", 50, 5);
+
+        let mut result: Vec<LanguageFileType> = breakdown.to_language_file_types();
+
+        let mut expected_result: Vec<LanguageFileType> = vec![
+            LanguageFileType {
+                language: Some("Rust".to_string()),
+                extension: Some("toml".to_string()),
+                percentage: Some(33.33333333333333),
+                loc: Some(5),
+                total_size: Some(50),
+                file_count: Some(1),
+            },
+            LanguageFileType {
+                language: Some("Rust".to_string()),
+                extension: Some("rs".to_string()),
+                percentage: Some(66.66666666666666),
+                loc: Some(10),
+                total_size: Some(100),
+                file_count: Some(1),
+            },
+        ];
+
+        result.sort_by(|a, b| a.extension.cmp(&b.extension));
+        expected_result.sort_by(|a, b| a.extension.cmp(&b.extension));
+
+        assert_eq!(result, expected_result);
     }
 }

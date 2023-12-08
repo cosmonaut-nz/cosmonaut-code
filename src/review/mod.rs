@@ -4,25 +4,24 @@
 //! Passes each relevant (code) file for review.
 //! Applies rules to the findings to produce a human readable summary and (set of) RAG statuses.
 //! Produces a human readable report.
-// TODO Complete refactor! The file is hard to manage, and oftentimes does not meet good DRY or SOLID principles
-mod code;
+// TODO Complete refactor! The file is hard to manage, and oftentimes does not meet DRY or SOLID principles
+//      refactor extract non-review aspects into other modules.
 pub(crate) mod data;
 pub(crate) mod report;
-mod tools;
 use crate::provider::api::ProviderCompletionResponse;
 use crate::provider::prompts::PromptData;
 use crate::provider::{review_or_summarise, RequestType};
-use crate::review::code::LanguageBreakdown;
-use crate::review::code::{
+use crate::retrieval::code::{
     analyse_file_language, calculate_rag_status_for_reviewed_file, initialize_language_analysis,
-    FileInfo,
+    FileInfo, LanguageBreakdown,
 };
+use crate::retrieval::git::repository::get_blacklist_dirs;
+use crate::retrieval::git::{contributor::get_git_contributors, repository::is_not_blacklisted};
 use crate::review::data::{
     FileReview, LanguageFileType, RAGStatus, RepositoryReview, ReviewBreakdown,
     SecurityIssueBreakdown, Severity,
 };
 use crate::review::report::create_report;
-use crate::review::tools::{get_git_contributors, is_not_blacklisted};
 use crate::settings::{ProviderSettings, ReviewType, ServiceSettings, Settings};
 use chrono::{DateTime, Local, Utc};
 use log::{debug, error, info, warn};
@@ -55,7 +54,7 @@ pub(crate) async fn assess_codebase(
         review.generative_ai_service_and_model.clone().unwrap()
     );
 
-    let blacklisted_dirs = tools::get_blacklist_dirs(&repository_root);
+    let blacklisted_dirs = get_blacklist_dirs(&repository_root);
 
     let (lc, mut breakdown, rules, docs) = initialize_language_analysis();
     let mut review_breakdown: ReviewBreakdown = initialise_review_breakdown();
