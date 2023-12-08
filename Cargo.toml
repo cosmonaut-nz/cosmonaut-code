@@ -1,8 +1,8 @@
 [package]
 name = "cosmonaut_code"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
-license = "MIT"
+license = "CC BY-NC-ND 4.0"
 readme = "README.md"
 authors = ["Mick Clarke <mick.clarke@cosmonaut.co.nz>"]
 repository = "https://github.com/cosmonaut-nz/cosmonaut-code"

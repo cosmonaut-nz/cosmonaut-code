@@ -10,12 +10,12 @@ pub mod comment_summary {
     use std::fs::File;
     use std::io::Read;
 
-    pub(crate) async fn test_summary(
+    pub(crate) async fn _test_summary(
         settings: &Settings,
     ) -> Result<(), Box<dyn std::error::Error>> {
         info!("Mod: Testing summary creation.");
 
-        let repo_review = deserialize_repository_review_from(
+        let repo_review = _deserialize_repository_review_from(
             settings
                 .developer_mode
                 .clone()
@@ -32,8 +32,6 @@ pub mod comment_summary {
             review_breakdown.summary.push('\n');
         }
 
-        // info!("Pre summary: {}", &review_breakdown.summary);
-
         match summarise_review_breakdown(settings, &review_breakdown).await {
             Ok(Some(summary)) => {
                 info!("Revised summary: \n{}\n", summary);
@@ -46,7 +44,7 @@ pub mod comment_summary {
 
         Ok(())
     }
-    pub(crate) fn deserialize_repository_review_from(
+    pub(crate) fn _deserialize_repository_review_from(
         file_path: String,
     ) -> Result<RepositoryReview, Box<dyn std::error::Error>> {
         let mut file = File::open(file_path)?;
@@ -55,5 +53,18 @@ pub mod comment_summary {
 
         let repo_review: RepositoryReview = serde_json::from_str(&json_data)?;
         Ok(repo_review)
+    }
+}
+
+#[cfg(debug_assertions)]
+pub mod _code_frequency {
+    use crate::settings::Settings;
+
+    pub(crate) fn test_code_frequency(
+        _settings: &Settings,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        log::info!("Mod: Testing code frequency.");
+
+        Ok(())
     }
 }
