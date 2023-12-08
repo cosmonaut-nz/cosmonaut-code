@@ -58,12 +58,25 @@ pub mod comment_summary {
 
 #[cfg(debug_assertions)]
 pub mod _code_frequency {
-    use crate::settings::Settings;
+    use crate::{retrieval::git::file::get_file_change_frequency, settings::Settings};
 
     pub(crate) fn test_code_frequency(
-        _settings: &Settings,
+        settings: &Settings,
     ) -> Result<(), Box<dyn std::error::Error>> {
         log::info!("Mod: Testing code frequency.");
+
+        let repo_path = settings.repository_path.clone();
+        let file_path = "src/review/mod.rs";
+
+        let (file_commits, total_commits, frequency) =
+            get_file_change_frequency(&repo_path, file_path)?;
+
+        log::info!(
+            "File commits: {}, total commits: {}, frequency: {}",
+            file_commits,
+            total_commits,
+            frequency
+        );
 
         Ok(())
     }
