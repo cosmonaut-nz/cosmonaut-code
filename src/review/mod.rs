@@ -13,13 +13,14 @@ use crate::provider::prompts::PromptData;
 use crate::provider::{review_or_summarise, RequestType};
 use crate::retrieval::code::{
     analyse_file_language, calculate_rag_status_for_reviewed_file, initialize_language_analysis,
-    FileInfo, LanguageBreakdown,
+    LanguageBreakdown, SourceFileChangeFrequency, SourceFileInfo,
 };
 use crate::retrieval::git::repository::get_blacklist_dirs;
+use crate::retrieval::git::source_file::get_file_change_frequency;
 use crate::retrieval::git::{contributor::get_git_contributors, repository::is_not_blacklisted};
 use crate::review::data::{
-    FileReview, LanguageFileType, RAGStatus, RepositoryReview, ReviewBreakdown,
-    SecurityIssueBreakdown, Severity,
+    LanguageFileType, RAGStatus, RepositoryReview, ReviewBreakdown, SecurityIssueBreakdown,
+    Severity, SourceFileReview,
 };
 use crate::review::report::create_report;
 use crate::settings::{ProviderSettings, ReviewType, ServiceSettings, Settings};
@@ -62,10 +63,10 @@ pub(crate) async fn assess_codebase(
     let mut overall_file_count = 0;
 
     for entry in get_files_from_repository(&repository_root, &blacklisted_dirs) {
-        let result: Option<FileInfo> =
-            get_file_info(&entry, &repository_root).and_then(|file_info| {
+        let result: Option<SourceFileInfo> =
+            get_file_info(&entry, &repository_root).and_then(|file_info: SourceFileInfo| {
                 analyse_file_language(&file_info, &lc, &rules, &docs).map(
-                    |(language, file_size, loc)| FileInfo {
+                    |(language, file_size, loc)| SourceFileInfo {
                         contents: file_info.contents,
                         name: file_info.name,
                         id_hash: file_info.id_hash,
@@ -73,6 +74,7 @@ pub(crate) async fn assess_codebase(
                         language: Some(language),
                         file_size: Some(file_size),
                         loc: Some(loc),
+                        file_change_frequency: file_info.file_change_frequency,
                     },
                 )
             });
@@ -105,6 +107,15 @@ pub(crate) async fn assess_codebase(
                                 &mut reviewed_file,
                                 &file_info,
                             );
+                            review.sum_num_commits(Some(
+                                reviewed_file
+                                    .clone()
+                                    .statistics
+                                    .unwrap()
+                                    .file_change_frequency
+                                    .unwrap()
+                                    .total_commits,
+                            ));
                             review.add_file_review(reviewed_file);
                         }
                         Ok(None) => warn!("No review actioned. None returned from 'review_file'"),
@@ -183,7 +194,7 @@ fn initialise_review_breakdown() -> ReviewBreakdown {
     }
 }
 ///
-fn update_language_breakdown(breakdown: &mut LanguageBreakdown, file_info: &FileInfo) {
+fn update_language_breakdown(breakdown: &mut LanguageBreakdown, file_info: &SourceFileInfo) {
     if let Some(language) = &file_info.language {
         let language_name = language.name.clone();
         let file_extension = file_info.ext.to_str().unwrap_or_default().to_string();
@@ -195,8 +206,8 @@ fn update_language_breakdown(breakdown: &mut LanguageBreakdown, file_info: &File
 
 fn update_review_breakdown(
     review_breakdown: &mut ReviewBreakdown,
-    reviewed_file: &mut FileReview,
-    file_info: &FileInfo,
+    reviewed_file: &mut SourceFileReview,
+    file_info: &SourceFileInfo,
 ) {
     review_breakdown.errors += reviewed_file.errors.as_ref().map_or(0, Vec::len) as i32;
     review_breakdown.improvements += reviewed_file.improvements.as_ref().map_or(0, Vec::len) as i32;
@@ -225,6 +236,7 @@ fn update_review_breakdown(
         loc: Some(file_info.loc.unwrap_or(0)),
         total_size: Some(file_info.file_size.unwrap_or(0)),
         file_count: Some(1),
+        file_change_frequency: file_info.file_change_frequency.clone(),
     };
     reviewed_file.statistics = Some(file_statistics);
     reviewed_file.file_rag_status =
@@ -283,13 +295,13 @@ async fn finalise_review(
 ///
 /// # Returns
 ///
-/// * [`FileReview`]
+/// * [`SourceFileReview`]
 ///
 async fn review_file(
     settings: &Settings,
     code_file_path: &String,
     code_file_contents: &String,
-) -> Result<Option<FileReview>, Box<dyn std::error::Error>> {
+) -> Result<Option<SourceFileReview>, Box<dyn std::error::Error>> {
     info!("Reviewing file: {}", code_file_path);
 
     if let Some(mut prompt_data) = get_prompt_data_based_on_review_type(settings)? {
@@ -321,7 +333,7 @@ async fn perform_review(
     settings: &Settings,
     provider: &ProviderSettings,
     prompt_data: &PromptData,
-) -> Result<Option<FileReview>, Box<dyn std::error::Error>> {
+) -> Result<Option<SourceFileReview>, Box<dyn std::error::Error>> {
     let max_retries = provider.max_retries.unwrap_or(0);
     let mut attempts = 0;
 
@@ -343,10 +355,10 @@ async fn perform_review(
         }
     }
 }
-/// processes the response returned by the LLM, stripping any artefacts, or illegal chars, then loading the JSON into a [`FileReview`]
+/// processes the response returned by the LLM, stripping any artefacts, or illegal chars, then loading the JSON into a [`SourceFileReview`]
 fn process_response(
     response: &ProviderCompletionResponse,
-) -> Result<FileReview, Box<dyn std::error::Error>> {
+) -> Result<SourceFileReview, Box<dyn std::error::Error>> {
     let orig_response_json = response.choices[0].message.content.to_string();
 
     strip_artifacts_from(&orig_response_json)
@@ -364,7 +376,7 @@ fn process_response(
             })
         })
 }
-/// ask the LLM to summarise to whole set of [`FileReview`] summaries into a single repository summary
+/// ask the LLM to summarise to whole set of [`SourceFileReview`] summaries into a single repository summary
 pub(crate) async fn summarise_review_breakdown(
     settings: &Settings,
     review_breakdown: &ReviewBreakdown,
@@ -414,7 +426,7 @@ fn validate_repository(repository_root: PathBuf) -> Result<PathBuf, PathError> {
     Ok(repository_root)
 }
 /// gets the content, filename and extension of a [`walkdir::DirEntry`]
-fn get_file_info(entry: &DirEntry, repo_root: &PathBuf) -> Option<FileInfo> {
+fn get_file_info(entry: &DirEntry, repo_root: &PathBuf) -> Option<SourceFileInfo> {
     let path = entry.path();
 
     // Calculate the relative path from the repository root
@@ -425,7 +437,10 @@ fn get_file_info(entry: &DirEntry, repo_root: &PathBuf) -> Option<FileInfo> {
     let id_hash = calculate_hash(&contents);
     let ext = path.extension()?.to_os_string();
 
-    Some(FileInfo {
+    let fcf: SourceFileChangeFrequency =
+        get_file_change_frequency(repo_root.to_str()?, name).ok()?;
+
+    Some(SourceFileInfo {
         contents: Arc::new(OsStr::new(&contents).to_os_string()),
         name: Arc::new(OsStr::new(name).to_os_string()),
         id_hash: Arc::new(OsStr::new(&id_hash).to_os_string()),
@@ -433,6 +448,7 @@ fn get_file_info(entry: &DirEntry, repo_root: &PathBuf) -> Option<FileInfo> {
         language: None,
         file_size: None,
         loc: None,
+        file_change_frequency: Some(fcf),
     })
 }
 /// gives an overall [`RAGStatus`] for the passed [`RepositoryReview`]
@@ -487,7 +503,7 @@ fn extract_repository_name(path_str: &str) -> Result<&str, PathError> {
         .and_then(|os_str| os_str.to_str())
         .ok_or_else(|| PathError::new("Invalid directory name"))
 }
-/// Calculates a hash from a string
+/// Calculates a (SHA256) hash from a string
 fn calculate_hash(data: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(data);

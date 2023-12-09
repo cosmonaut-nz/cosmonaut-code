@@ -2,7 +2,7 @@
 //!     Service providers {OpenAI, Google, Anthropic, Meta, Other...}
 //!     LLM API access
 //!     Repository directory/folder location
-//!
+// TODO refactor so that the settings are self-contained and are safe once loaded via the 'new' function
 use config::FileFormat;
 use config::{Config, ConfigError, File};
 use inquire::formatter::StringFormatter;
@@ -69,8 +69,7 @@ impl fmt::Display for Settings {
 ///
 /// The Settings are loaded via a [`Config`]::builder() from iterative sources:
 ///     1. From the 'DEFAULT_CONFIG' that is loaded at compile time
-///     2. From an evironment variable, "SENSITIVE_SETTINGS_PATH" that points to a `json` file, and not present, then
-///     3. From user commandline input for the required configuration and sensitive data such as 'api_key'
+///     2. From an evironment variable, "SENSITIVE_SETTINGS_PATH" that points to a `json` file, and not present
 ///
 /// # Fields
 /// - `providers`: The set of organizations providing the language model service (e.g., openai, google, anthropic, meta, etc.).
@@ -199,7 +198,14 @@ impl fmt::Display for ProviderSettings {
 pub(crate) enum ProviderError {
     NotFound(String),
 }
-
+/// Custom error for misconfiguration of provider
+impl fmt::Display for ProviderError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ProviderError::NotFound(name) => write!(f, "ProviderSettings not found: {}", name),
+        }
+    }
+}
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub(crate) struct ServiceSettings {
     pub(crate) name: String,
@@ -207,6 +213,26 @@ pub(crate) struct ServiceSettings {
 }
 pub(crate) enum ServiceError {
     NotFound(String),
+}
+impl fmt::Display for ServiceError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ServiceError::NotFound(name) => write!(f, "ServiceSettings not found: {}", name),
+        }
+    }
+}
+impl std::fmt::Debug for ServiceError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotFound(arg0) => f.debug_tuple("NotFound").field(arg0).finish(),
+        }
+    }
+}
+impl std::error::Error for ServiceError {}
+impl fmt::Debug for SensitiveSettings {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "*** sensitive data hidden ***")
+    }
 }
 #[derive(Debug, Serialize, Deserialize, Default, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -241,44 +267,14 @@ pub(crate) struct SensitiveSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) org_name: Option<String>,
 }
-#[derive(Serialize, Deserialize, PartialEq)]
-pub(crate) struct APIKey(String); // Sensitive data!
-
-/// Custom error for misconfiguration of provider
-impl fmt::Display for ProviderError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ProviderError::NotFound(name) => write!(f, "ProviderSettings not found: {}", name),
-        }
-    }
-}
-impl fmt::Display for ServiceError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ServiceError::NotFound(name) => write!(f, "ServiceSettings not found: {}", name),
-        }
-    }
-}
-impl std::fmt::Debug for ServiceError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::NotFound(arg0) => f.debug_tuple("NotFound").field(arg0).finish(),
-        }
-    }
-}
-impl std::error::Error for ServiceError {}
-/// Custom Debug implementation for SensitiveSettings to prevent accidental printing of secret
-impl fmt::Debug for SensitiveSettings {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "*** sensitive data hidden ***")
-    }
-}
 /// Custom Display implementation for SensitiveSettings to prevent accidental printing of secret
 impl fmt::Display for SensitiveSettings {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "*** sensitive data hidden ***")
     }
 }
+#[derive(Serialize, Deserialize, PartialEq)]
+pub(crate) struct APIKey(String); // Sensitive data!
 /// Locking up the APIKey to prevent accidental display
 impl APIKey {
     pub(crate) fn use_key<T, F>(&self, f: F) -> T
@@ -288,7 +284,7 @@ impl APIKey {
         f(&self.0)
     }
 }
-
+/// Helper to enable a default 'false' value for a boolean field
 fn default_false() -> bool {
     false
 }
