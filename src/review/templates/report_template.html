@@ -127,6 +127,7 @@
             </p>
             <p>Total lines of code (LOC): {{repository_review.sum_loc}}</p>
             <p>Total number of files: {{repository_review.sum_num_files}}</p>
+            <p>Total commits to repository: {{repository_review.sum_num_commits}}</p>
             {{#if repository_review.summary.summary}}
             <div class="detailed-section">
                 <p style="font-size: smaller;">{{newline_to_br repository_review.summary.summary}}</p>
@@ -197,7 +198,19 @@
                         class="{{#if (eq file_rag_status 'Green')}}status-green{{/if}}{{#if (eq file_rag_status 'Amber')}}status-amber{{/if}}{{#if (eq file_rag_status 'Red')}}status-red{{/if}}">
                         {{file_rag_status}}
                     </span></p>
-                {{#if errors}}
+                <!-- TODO insert the overall rank of source_file_frequency -->
+                <p><strong>Statistics</strong>:
+                <div class='section' style="margin-left: 10px; font-size: smaller;">
+                    <p><strong>Language</strong>: {{statistics.language}}</p>
+                    <p><strong>Extension</strong>: &#46;{{statistics.extension}}</p>
+                    <p><strong>LOC</strong>: {{statistics.loc}}</p>
+                    <p><strong>File size</strong>: {{statistics.total_size}} bytes</p>
+                    <p><strong>Total commits</strong>: {{statistics.file_change_frequency.file_commits}}</p>
+                    <p><strong>File change frequency</strong>: {{format_percentage
+                        statistics.file_change_frequency.frequency}}%</p>
+                </div>
+                </p>
+                {{#if security_issues}}
                 <button type="button" class="collapsible"><strong>Security Issues:</strong></button>
                 <div class="content">
                     {{#each security_issues}}
@@ -234,14 +247,6 @@
                     {{/each}}
                 </div>
                 {{/if}}
-                <p><strong>Statistics</strong>:
-                <div class='section'>
-                    <p><strong>Language</strong>: {{statistics.language}}</p>
-                    <p><strong>Extension</strong>: &#46;{{statistics.extension}}</p>
-                    <p><strong>LOC</strong>: {{statistics.loc}}</p>
-                    <p><strong>File size</strong>: {{statistics.total_size}} bytes</p>
-                </div>
-                </p>
             </div>
             {{/each}}
         </div>

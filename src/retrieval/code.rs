@@ -1,6 +1,6 @@
 //! contains functionality to look at the codebase and gain insights that will provide
 //! statistics and inputs into subsequent review.
-use crate::review::data::{FileReview, LanguageFileType, RAGStatus, Severity};
+use crate::review::data::{LanguageFileType, RAGStatus, Severity, SourceFileReview};
 use linguist::{
     container::InMemoryLanguageContainer,
     resolver::{resolve_language_from_content_str, Language, Scope},
@@ -11,19 +11,21 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     ffi::{OsStr, OsString},
+    fmt,
     sync::Arc,
 };
-
+/// Contains the predefined languages, heuristics, vendors and documentation regexes from the GitHub Linguist project
 pub(crate) mod predefined {
     include!(concat!(env!("OUT_DIR"), "/languages.rs"));
     include!(concat!(env!("OUT_DIR"), "/heuristics.rs"));
     include!(concat!(env!("OUT_DIR"), "/vendors.rs"));
     include!(concat!(env!("OUT_DIR"), "/documentation.rs"));
 }
-
+/// The prefixes that indicate a comment in a file
+/// TODO: move to tokei crate
 const COMMENT_PREFIXES: &[&str] = &["//", "///", "//!", "#", "\"\"\" "];
 
-// Initialize language container and return necessary objects
+/// Initialize the language analysis by registering the predefined languages and heuristics
 pub(crate) fn initialize_language_analysis() -> (
     InMemoryLanguageContainer,
     LanguageBreakdown,
@@ -49,8 +51,18 @@ pub(crate) fn initialize_language_analysis() -> (
 
     (lc, breakdown, rules, docs)
 }
+/// Contains the information about a specific file during the retrieval phase
+/// Fields:
+/// - contents: the contents of the file as a string
+/// - name: the name of the file
+/// - id_hash: the hash of the file (SHA256)
+/// - ext: the extension of the file
+/// - language: the language of the file
+/// - file_size: the size of the file in bytes
+/// - loc: the number of lines of code in the file
+/// - file_change_frequency: [`FileChangeFrequency`] for the file
 #[derive(Debug)]
-pub(crate) struct FileInfo {
+pub(crate) struct SourceFileInfo {
     pub(crate) contents: Arc<OsString>,
     pub(crate) name: Arc<OsString>,
     pub(crate) id_hash: Arc<OsString>,
@@ -58,10 +70,46 @@ pub(crate) struct FileInfo {
     pub(crate) language: Option<Language>,
     pub(crate) file_size: Option<u64>,
     pub(crate) loc: Option<i64>,
+    pub(crate) file_change_frequency: Option<SourceFileChangeFrequency>,
 }
-
+/// Captures the file change frequency for a file
+/// Fields:
+/// - file_commits: the number of commits that the file has been changed in
+/// - total_commits: the total number of commits in the repository as reference
+/// - frequency: the frequency of the file being changed, as a ratio of file_commits to total_commits
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+pub(crate) struct SourceFileChangeFrequency {
+    pub(crate) file_commits: usize,
+    pub(crate) total_commits: usize,
+    pub(crate) frequency: f32,
+}
+pub(crate) enum SourceFileError {
+    GitError(String),
+}
+impl fmt::Display for SourceFileError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SourceFileError::GitError(name) => write!(f, "Git error: {}", name),
+        }
+    }
+}
+impl std::fmt::Debug for SourceFileError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::GitError(arg0) => f.debug_tuple("GitError").field(arg0).finish(),
+        }
+    }
+}
+impl From<git2::Error> for SourceFileError {
+    fn from(error: git2::Error) -> Self {
+        SourceFileError::GitError(error.message().to_string())
+    }
+}
+impl std::error::Error for SourceFileError {}
+/// Analyse the file language, returning the language, file size and lines of code
+// TODO: refactor to handle documentation, dotfiles, etc.
 pub(crate) fn analyse_file_language(
-    file_info: &FileInfo,
+    file_info: &SourceFileInfo,
     lc: &InMemoryLanguageContainer,
     _rules: &RegexSet,
     _docs: &RegexSet,
@@ -111,7 +159,7 @@ pub(crate) fn analyse_file_language(
 
 /// Calculates the RAG status for a [`FileReview`] on the number of errors, improvements and security_issues, according to lines of code
 pub(crate) fn calculate_rag_status_for_reviewed_file(
-    reviewed_file: &FileReview,
+    reviewed_file: &SourceFileReview,
 ) -> Option<RAGStatus> {
     let errors_count = reviewed_file
         .errors
@@ -160,7 +208,7 @@ pub(crate) fn calculate_rag_status_for_reviewed_file(
     }
     Some(RAGStatus::Red)
 }
-
+/// Calculates the size of the file_contents in bytes
 fn get_file_contents_size(file_contents: impl AsRef<OsStr>) -> Result<u64, &'static str> {
     let content_str = file_contents
         .as_ref()
@@ -173,7 +221,7 @@ fn get_file_contents_size(file_contents: impl AsRef<OsStr>) -> Result<u64, &'sta
     Ok(length)
 }
 
-/// Function to count lines of code in a file, skipping comments
+/// Function to count lines of code in a file, skipping comments and empty lines
 // TODO: shift to using tokei crate to improve maintainability and accuracy
 fn count_lines_of_code(file_content: impl AsRef<OsString>) -> Result<i64, &'static str> {
     let content_str = file_content
@@ -205,12 +253,12 @@ fn count_lines_of_code(file_content: impl AsRef<OsString>) -> Result<i64, &'stat
     Ok(functional_lines)
 }
 
+/// Contains the breakdown of languages used in the repository as derived from the Linguist crate
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub(crate) struct LanguageBreakdown {
     pub(crate) usages: HashMap<String, HashMap<String, (u64, i32, i64)>>, // size, count, loc
     pub(crate) total_size: u64,
 }
-
 impl LanguageBreakdown {
     pub(crate) fn add_usage(&mut self, lang: &str, ext: &str, size: u64, loc: i64) {
         let language_entry = self.usages.entry(lang.to_string()).or_default();
@@ -233,6 +281,7 @@ impl LanguageBreakdown {
                     loc: Some(loc),
                     total_size: Some(size),
                     file_count: Some(count),
+                    file_change_frequency: None,
                 });
             }
         }
@@ -310,6 +359,7 @@ mod tests {
                 loc: Some(5),
                 total_size: Some(50),
                 file_count: Some(1),
+                file_change_frequency: None,
             },
             LanguageFileType {
                 language: Some("Rust".to_string()),
@@ -318,6 +368,7 @@ mod tests {
                 loc: Some(10),
                 total_size: Some(100),
                 file_count: Some(1),
+                file_change_frequency: None,
             },
         ];
 

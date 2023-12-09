@@ -4,31 +4,38 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::impl_builder_methods;
+use crate::{impl_builder_methods, retrieval::code::SourceFileChangeFrequency};
 
-#[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
-pub(crate) enum RAGStatus {
-    #[default]
-    Green,
-    Amber,
-    Red,
-}
+/// #Fields:
+/// - 'repository_name': The name of the repository
+/// - 'generative_ai_service_and_model': The generative AI service and model used to generate the review
+/// - 'repository_type': The type of repository, e.g., Java, .Net, etc.
+/// - 'date': Date of execution (formatted)
+/// - 'repository_purpose': Derive from README, if present, else allow user entry in UI
+/// - 'summary': A roll up of the findings generated via LLM
+/// - 'repository_rag_status': In {Red, Amber, Green}
+/// - 'sum_loc': Total lines of code
+/// - 'sum_num_files': Total number of files
+/// - 'contributors': List of contributors to the codebase from commit history
+/// - 'language_file_types': The languages (as a %) found in the repository (a la GitHub)
+/// - 'file_reviews': Each of the code files
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub(crate) struct RepositoryReview {
-    pub(crate) repository_name: String, // Derived from path
+    pub(crate) repository_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) generative_ai_service_and_model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    repository_type: Option<String>, // The type of repository, e.g., Java, .Net, etc.
-    date: String,                                // Date of execution (formatted)
-    repository_purpose: Option<String>, // Derive from README, if present, else allow user entry in UI
-    pub(crate) summary: Option<ReviewBreakdown>, // A roll up of the findings
-    repository_rag_status: RAGStatus,   // In {Red, Amber, Green}
-    sum_loc: Option<i64>,               // Total lines of code
-    sum_num_files: Option<i32>,         // Total number of files
-    contributors: Vec<Contributor>,     // List of contributors to the codebase from commit history
-    language_file_types: Vec<LanguageFileType>, // The languages (as a %) found in the repository (a la GitHub)
-    pub(crate) file_reviews: Vec<FileReview>,   // Each of the code files
+    repository_type: Option<String>,
+    date: String,
+    repository_purpose: Option<String>,
+    pub(crate) summary: Option<ReviewBreakdown>,
+    repository_rag_status: RAGStatus,
+    sum_loc: Option<i64>,
+    sum_num_files: Option<i32>,
+    sum_num_commits: Option<usize>,
+    contributors: Vec<Contributor>,
+    language_file_types: Vec<LanguageFileType>,
+    pub(crate) file_reviews: Vec<SourceFileReview>,
 }
 impl RepositoryReview {
     pub(crate) fn new(repository_name: String) -> Self {
@@ -42,17 +49,17 @@ impl RepositoryReview {
             repository_rag_status: RAGStatus::Green,
             sum_loc: None,
             sum_num_files: None,
+            sum_num_commits: None,
             contributors: Vec::new(),
             language_file_types: Vec::new(),
             file_reviews: Vec::new(),
         }
     }
     /// pushes a [`FileReview`] into the filereviews [`Vec`]
-    pub(crate) fn add_file_review(&mut self, file_review: FileReview) {
+    pub(crate) fn add_file_review(&mut self, file_review: SourceFileReview) {
         self.file_reviews.push(file_review);
     }
 }
-
 impl_builder_methods!(
     RepositoryReview,
     generative_ai_service_and_model: Option<String>,
@@ -63,82 +70,10 @@ impl_builder_methods!(
     repository_rag_status: RAGStatus,
     sum_loc: Option<i64>,
     sum_num_files: Option<i32>,
+    sum_num_commits: Option<usize>,
     contributors: Vec<Contributor>,
     language_file_types: Vec<LanguageFileType>
 );
-/// Captures the LLM review of the specified file.
-///
-/// This struct will contain the fields passed back as JSON from the LLM.
-///
-/// #Fields
-/// - 'filename': The name of the file to be reviewed
-/// - 'summary': A summary of the findings of the review
-/// - 'file_rag_status': Red = urgent attention required, Amber: some issues to be addressed, Green: code okay
-/// - 'errors': a Vec of ['Error']s found in the code giving the issue and potential resolution for each
-/// - 'improvements': a Vec of ['Improvement']s, giving a suggestion and example for each
-/// - 'security_issues': a Vec of ['SecurityIssue']s, giving the threat and mitigation for each
-/// - 'statistics': a list of statistics (e.g., lines of code, functions, methods, etc.)
-///
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
-pub(crate) struct FileReview {
-    pub(crate) filename: String,           // The name of the file
-    pub(crate) id_hash: Option<String>,    // The contents of the file hashed as an ID
-    pub(crate) summary: String,            // A summary of the findings of the review
-    pub(crate) file_rag_status: RAGStatus, // In {Red, Amber, Green}
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) security_issues: Option<Vec<SecurityIssue>>, // A list of security issues, giving the threat and mitigation for each
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) errors: Option<Vec<Error>>, // A list of errors found in the code giving the issue and potential resolution for each
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) improvements: Option<Vec<Improvement>>, // A list of improvements, giving a suggestion and example for each
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) statistics: Option<LanguageFileType>, // A list of statistics (e.g., lines of code, functions, methods, etc.)
-}
-
-impl FileReview {
-    #[allow(dead_code)]
-    pub(crate) fn get_improvements(&self) -> &Option<Vec<Improvement>> {
-        &self.improvements
-    }
-    pub(crate) fn get_errors(&self) -> &Option<Vec<Error>> {
-        &self.errors
-    }
-    pub(crate) fn get_security_issues(&self) -> &Option<Vec<SecurityIssue>> {
-        &self.security_issues
-    }
-    pub(crate) fn get_file_rag_status(&self) -> &RAGStatus {
-        &self.file_rag_status
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
-pub(crate) struct SecurityIssue {
-    pub(crate) severity: Severity,
-    pub(crate) code: String,
-    pub(crate) threat: String,
-    pub(crate) mitigation: String,
-}
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
-pub(crate) struct Error {
-    code: String,
-    issue: String,
-    resolution: String,
-}
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
-pub(crate) struct Improvement {
-    code: String,
-    suggestion: String,
-    improvement_details: String,
-}
-
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
-pub(crate) enum Severity {
-    Low,
-    Medium,
-    High,
-    Critical,
-}
-
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub(crate) struct ReviewBreakdown {
     pub(crate) summary: String,
@@ -162,6 +97,116 @@ pub(crate) enum Documentation {
     Good,
     Excellent,
 }
+#[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
+pub(crate) enum RAGStatus {
+    #[default]
+    Green,
+    Amber,
+    Red,
+}
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+pub(crate) struct Contributor {
+    name: String,
+    num_commits: i32,
+    last_contribution: DateTime<Utc>,
+    percentage: i32,
+}
+impl Contributor {
+    pub(crate) fn new(
+        name: String,
+        num_commits: i32,
+        last_contribution: DateTime<Utc>,
+        percentage: i32,
+    ) -> Self {
+        Self {
+            name,
+            num_commits,
+            last_contribution,
+            percentage,
+        }
+    }
+}
+
+/// Captures the LLM review of the specified file.
+///
+/// This struct will contain the fields passed back as JSON from the LLM.
+///
+/// #Fields
+/// - 'filename': The name of the file to be reviewed
+/// - 'summary': A summary of the findings of the review
+/// - 'file_rag_status': Red = urgent attention required, Amber: some issues to be addressed, Green: code okay
+/// - 'errors': a Vec of ['Error']s found in the code giving the issue and potential resolution for each
+/// - 'improvements': a Vec of ['Improvement']s, giving a suggestion and example for each
+/// - 'security_issues': a Vec of ['SecurityIssue']s, giving the threat and mitigation for each
+/// - 'statistics': a list of statistics (e.g., lines of code, functions, methods, etc.)
+///
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+pub(crate) struct SourceFileReview {
+    pub(crate) filename: String,
+    pub(crate) id_hash: Option<String>,
+    pub(crate) summary: String,
+    pub(crate) file_rag_status: RAGStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) security_issues: Option<Vec<SecurityIssue>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) errors: Option<Vec<Error>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) improvements: Option<Vec<Improvement>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) statistics: Option<LanguageFileType>, // TODO: Change to SourceFileStatistics struct
+}
+impl SourceFileReview {
+    #[allow(dead_code)]
+    pub(crate) fn get_improvements(&self) -> &Option<Vec<Improvement>> {
+        &self.improvements
+    }
+    pub(crate) fn get_errors(&self) -> &Option<Vec<Error>> {
+        &self.errors
+    }
+    pub(crate) fn get_security_issues(&self) -> &Option<Vec<SecurityIssue>> {
+        &self.security_issues
+    }
+    pub(crate) fn get_file_rag_status(&self) -> &RAGStatus {
+        &self.file_rag_status
+    }
+}
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+pub(crate) struct SecurityIssue {
+    pub(crate) severity: Severity,
+    pub(crate) code: String,
+    pub(crate) threat: String,
+    pub(crate) mitigation: String,
+}
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+pub(crate) struct Error {
+    code: String,
+    issue: String,
+    resolution: String,
+}
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+pub(crate) struct Improvement {
+    code: String,
+    suggestion: String,
+    improvement_details: String,
+}
+/// Severity of the security issue as per CVSS v3.1
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+pub(crate) enum Severity {
+    Low,
+    Medium,
+    High,
+    Critical,
+}
+
+/// Top-level struct to hold data on the file types found in the repository
+/// #Fields:
+/// - 'language': The language of the file
+/// - 'extension': The extension of the file
+/// - 'percentage': The percentage of the language in the repository
+/// - 'loc': The lines of code for the language
+/// - 'total_size': The total size of the source file in bytes
+/// - 'file_commits': The number of commits for the file
+/// - 'frequency': The % frequency of change for the file - i.e. how often the file is included in overall commits
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub(crate) struct LanguageFileType {
     pub(crate) language: Option<String>,
@@ -170,6 +215,7 @@ pub(crate) struct LanguageFileType {
     pub(crate) loc: Option<i64>,
     pub(crate) total_size: Option<u64>,
     pub(crate) file_count: Option<i32>,
+    pub(crate) file_change_frequency: Option<SourceFileChangeFrequency>,
 }
 impl LanguageFileType {
     // Method to check if an extension is valid among a collection of LanguageFileType
@@ -205,29 +251,7 @@ impl LanguageFileType {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
-pub(crate) struct Contributor {
-    name: String,
-    num_commits: i32,
-    last_contribution: DateTime<Utc>,
-    percentage: i32,
-}
-impl Contributor {
-    pub(crate) fn new(
-        name: String,
-        num_commits: i32,
-        last_contribution: DateTime<Utc>,
-        percentage: i32,
-    ) -> Self {
-        Self {
-            name,
-            num_commits,
-            last_contribution,
-            percentage,
-        }
-    }
-}
-/// Deserializes a str into a ['FileReview'] struct.
+/// Deserializes a str into a [`SourceFileReview`] struct.
 ///
 /// # Parameters
 ///
@@ -235,9 +259,11 @@ impl Contributor {
 ///
 /// # Returns
 ///
-/// * A [`FileReview`] struct
+/// * A [`SourceFileReview`] struct
 ///
-pub(crate) fn deserialize_file_review(json_str: &str) -> Result<FileReview, serde_json::Error> {
+pub(crate) fn deserialize_file_review(
+    json_str: &str,
+) -> Result<SourceFileReview, serde_json::Error> {
     serde_json::from_str(json_str)
 }
 
@@ -269,7 +295,7 @@ mod tests {
             improvement_details: "Implement a function to load the timeout from an environment variable or a configuration file.".to_string(),
         };
 
-        let expected_filereview: FileReview = FileReview {
+        let expected_filereview: SourceFileReview = SourceFileReview {
             filename: "src/provider/static_config.rs".to_string(),
             id_hash: Some("".to_string()),
             summary:"The code defines a constant for a request timeout without any visible issues or security threats. However, the usage of 'pub(crate) (crate) const' could be improved for better code maintainability.".to_string(),

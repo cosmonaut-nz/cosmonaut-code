@@ -54,33 +54,38 @@ pub(crate) mod repository {
     }
 }
 
-/// Functions to gather data on the 'git' files
-pub(crate) mod file {
-    use git2::Repository;
+/// Functions to gather data on files in 'git' repositories
+pub(crate) mod source_file {
+    use crate::retrieval::code::{SourceFileChangeFrequency, SourceFileError};
+    use git2::{Commit, DiffDelta, Repository, Revwalk, Tree};
 
+    /// Gets the file change frequency for the file passed as 'file_path' in the repository passed as 'repo_path'
+    /// Returns:
+    ///   - Ok(SourceFileChangeFrequency) if successful
+    ///   - Err(SourceFileError) if unsuccessful
     pub(crate) fn get_file_change_frequency(
         repo_path: &str,
         file_path: &str,
-    ) -> Result<(usize, usize, f32), git2::Error> {
-        let repo = Repository::open(repo_path)?;
-        let mut revwalk = repo.revwalk()?;
+    ) -> Result<SourceFileChangeFrequency, SourceFileError> {
+        let repo: Repository = Repository::open(repo_path)?;
+        let mut revwalk: Revwalk<'_> = repo.revwalk()?;
         revwalk.push_head()?;
 
-        let mut total_commits = 0;
-        let mut file_commits = 0;
+        let mut total_commits: usize = 0;
+        let mut file_commits: usize = 0;
 
         for commit_id in revwalk {
-            let commit = repo.find_commit(commit_id?)?;
+            let commit: Commit<'_> = repo.find_commit(commit_id?)?;
             total_commits += 1;
 
             if commit.parent_count() > 0 {
-                let parent = commit.parent(0)?;
-                let commit_tree = commit.tree()?;
-                let parent_tree = parent.tree()?;
+                let parent: Commit<'_> = commit.parent(0)?;
+                let commit_tree: Tree<'_> = commit.tree()?;
+                let parent_tree: Tree<'_> = parent.tree()?;
 
                 let diff = repo.diff_tree_to_tree(Some(&parent_tree), Some(&commit_tree), None)?;
                 diff.foreach(
-                    &mut |delta, _| {
+                    &mut |delta: DiffDelta<'_>, _| {
                         let filepath = delta
                             .new_file()
                             .path()
@@ -96,10 +101,13 @@ pub(crate) mod file {
                 )?;
             }
         }
+        let frequency = (file_commits as f32 / total_commits as f32) * 100.00;
 
-        let frequency = file_commits as f32 / total_commits as f32;
-
-        Ok((file_commits, total_commits, frequency))
+        Ok(SourceFileChangeFrequency {
+            file_commits,
+            total_commits,
+            frequency,
+        })
     }
 }
 
