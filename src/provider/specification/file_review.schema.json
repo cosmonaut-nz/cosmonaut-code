@@ -1,12 +1,24 @@
 {
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "title": "FileReview",
+    "title": "SourceFileReview",
     "description": "A source file review data object that captures the elements of the review.",
     "type": "object",
     "properties": {
-        "filename": {
+        "source_file_info": {
+            "$ref": "#/$defs/sourceFileInfo",
+            "description": "The details of the source file being reviewed"
+        },
+        "file_rag_status": {
             "type": "string",
-            "description": "The name of the file as provided"
+            "description": "A RAG status for the file according to the findings",
+            "enum": [
+                "Red",
+                "Amber",
+                "Green"
+            ]
+        },
+        "summary": {
+            "type": "string",
+            "description": "A brief and concise summary of what the source file functionally does and of the findings during the code review ensuring that the summary reflects the findings, such as security_issues, errors or improvements."
         },
         "errors": {
             "type": "array",
@@ -28,30 +40,45 @@
                 "$ref": "#/$defs/improvement"
             },
             "description": "A list of non-critical code improvements that will improve code quality, readability and maintainability, giving a suggestion and concrete actionable example for each"
-        },
-        "statistics": {
-            "$ref": "#/$defs/languageFileType",
-            "description": "A list of statistics (e.g., lines of code, etc.)"
-        },
-        "file_rag_status": {
-            "type": "string",
-            "description": "A RAG status for the file according to the findings",
-            "enum": [
-                "Red",
-                "Amber",
-                "Green"
-            ]
-        },
-        "summary": {
-            "type": "string",
-            "description": "A brief and concise summary of what the source file functionally does and of the findings during the code review ensuring that the summary reflects the findings, such as security_issues, errors or improvements."
         }
     },
     "required": [
-        "filename",
+        "source_file_info",
         "summary"
     ],
     "$defs": {
+        "sourceFileInfo": {
+            "type": "object",
+            "$ref": "#/$defs/statistics",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "The name of the file, including the extension"
+                },
+                "relative_path": {
+                    "type": "string",
+                    "description": "The relative path of the file, including the file name and extension"
+                },
+                "language": {
+                    "type": "languageType",
+                    "description": "The details of the language the file is written in"
+                },
+                "id_hash": {
+                    "type": "string",
+                    "description": "A hash of the contents of the source file as SHA256. Leave as zero."
+                },
+                "statistics": {
+                    "type": "Statistics",
+                    "$ref": "#/$defs/statistics",
+                    "description": "Statistics for this SourceFileInfo"
+                }
+            },
+            "required": [
+                "name",
+                "relative_path",
+                "statistics"
+            ]
+        },
         "error": {
             "type": "object",
             "properties": {
@@ -129,10 +156,10 @@
                 "improvement_details"
             ]
         },
-        "languageFileType": {
+        "languageType": {
             "type": "object",
             "properties": {
-                "language": {
+                "name": {
                     "type": "string",
                     "description": "The language the code is in, e.g., 'Rust', 'C#', 'Java', etc."
                 },
@@ -140,25 +167,40 @@
                     "type": "string",
                     "description": "The file extension of the file, e.g., '.rs' or '.cs', etc."
                 },
-                "percentage": {
-                    "type": "number",
-                    "description": "A roll-up percentage of all LanguageFileTypes of this language. Leave as zero if not known"
-                },
+                "statistics": {
+                    "type": "statistics",
+                    "$ref": "#/$defs/statistics",
+                    "description": "Statistics for this LanguageType"
+                }
+            },
+            "required": [
+                "name",
+                "extension",
+                "statistics"
+            ]
+        },
+        "statistics": {
+            "type": "object",
+            "properties": {
                 "size": {
                     "type": "integer",
-                    "description": "The size of the file, in bytes. Leave as zero if not known"
+                    "description": "The size of the file, in bytes. Leave as zero."
                 },
                 "loc": {
                     "type": "integer",
-                    "description": "The number of lines of code found in the file. Excluding comment lines or blocks"
+                    "description": "The number of lines of code found in the file. Excluding comment lines or blocks. Leave as zero."
                 },
-                "total_size": {
+                "num_files": {
                     "type": "integer",
-                    "description": "A roll-up of all LanguageFileTypes size values, in bytes. Leave as zero if not known"
+                    "description": "A roll-up of all files. Leave as zero."
                 },
-                "file_count": {
+                "num_commits": {
                     "type": "integer",
-                    "description": "A roll-up count of all LanguageFileTypes of this language"
+                    "description": "A roll-up of all commits. Leave as zero."
+                },
+                "frequency": {
+                    "type": "float",
+                    "description": "The frequency of commits to the repository, as a ratio of commits to total commits in the repository. Leave as zero."
                 }
             },
             "required": []

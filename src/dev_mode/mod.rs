@@ -3,8 +3,8 @@
 //! Note: this code will _NOT_ be included in the release binary
 #[cfg(debug_assertions)]
 pub mod comment_summary {
-    use crate::review::data::{RepositoryReview, ReviewBreakdown};
-    use crate::review::summarise_review_breakdown;
+    use crate::review::data::{RepositoryReview, ReviewSummary};
+    use crate::review::summarise_review_summaries;
     use crate::settings::Settings;
     use log::{info, warn};
     use std::fs::File;
@@ -24,15 +24,15 @@ pub mod comment_summary {
                 .unwrap(),
         )?;
 
-        // Create a [`ReviewBreakdown`]
-        let mut review_breakdown: ReviewBreakdown = repo_review.summary.unwrap().clone();
+        // Create a [`ReviewSummary`]
+        let mut review_summary: ReviewSummary = repo_review.summary.unwrap().clone();
 
         for review in repo_review.file_reviews {
-            review_breakdown.summary.push_str(&review.summary);
-            review_breakdown.summary.push('\n');
+            review_summary.text.push_str(&review.summary);
+            review_summary.text.push('\n');
         }
 
-        match summarise_review_breakdown(settings, &review_breakdown).await {
+        match summarise_review_summaries(settings, &review_summary).await {
             Ok(Some(summary)) => {
                 info!("Revised summary: \n{}\n", summary);
             }
@@ -59,7 +59,7 @@ pub mod comment_summary {
 #[cfg(debug_assertions)]
 pub mod _code_frequency {
     use crate::{
-        retrieval::{code::SourceFileChangeFrequency, git::source_file::get_file_change_frequency},
+        retrieval::{data::SourceFileChangeFrequency, git::source_file::get_file_change_frequency},
         settings::Settings,
     };
 
@@ -69,6 +69,7 @@ pub mod _code_frequency {
         log::info!("Mod: Testing code frequency.");
 
         let repo_path = settings.repository_path.clone();
+        // TODO: iterate over a set of files and determine the overall frequency ranking (top five) and also the average frequency (into the repository)
         let file_path = "src/review/mod.rs";
 
         let fcf: SourceFileChangeFrequency = get_file_change_frequency(&repo_path, file_path)?;

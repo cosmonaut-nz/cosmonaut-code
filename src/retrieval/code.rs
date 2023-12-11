@@ -1,19 +1,23 @@
-//! contains functionality to look at the codebase and gain insights that will provide
-//! statistics and inputs into subsequent review.
-use crate::review::data::{LanguageFileType, RAGStatus, Severity, SourceFileReview};
+//! Contains functionality to retrieve data from the codebase and gain insights that will provide
+//! statistics and inputs into subsequent review by an LLM.
+//!
+//! # Nomenclature:
+//! - **\*Info**: data representation struct for a specific purpose, e.g. [`SourceFileInfo`], which is used to build [`SourceFileReview`]s
+//! - **\*Breakdown**: a builder data struct that builds information for a specific purpose, e.g. [`LanguageBreakdown`], which is used to build [`LanguageFileType`]s
+use crate::review::data::{RAGStatus, Severity, SourceFileReview};
 use linguist::{
     container::InMemoryLanguageContainer,
     resolver::{resolve_language_from_content_str, Language, Scope},
+    utils::{
+        is_configuration_from_str, is_documentation_from_str, is_dotfile_from_str,
+        is_vendor_from_str,
+    },
 };
 use log::error;
 use regex::RegexSet;
-use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashMap,
-    ffi::{OsStr, OsString},
-    fmt,
-    sync::Arc,
-};
+use std::ffi::OsStr;
+
+use super::data::SourceFileInfo;
 /// Contains the predefined languages, heuristics, vendors and documentation regexes from the GitHub Linguist project
 pub(crate) mod predefined {
     include!(concat!(env!("OUT_DIR"), "/languages.rs"));
@@ -25,139 +29,79 @@ pub(crate) mod predefined {
 /// TODO: move to tokei crate
 const COMMENT_PREFIXES: &[&str] = &["//", "///", "//!", "#", "\"\"\" "];
 
-/// Initialize the language analysis by registering the predefined languages and heuristics
-pub(crate) fn initialize_language_analysis() -> (
-    InMemoryLanguageContainer,
-    LanguageBreakdown,
-    RegexSet,
-    RegexSet,
-) {
+/// Initialize the language analysis by registering the predefined languages and heuristics as provided by the [`linguist`] crate
+pub(crate) fn initialize_language_analysis() -> (InMemoryLanguageContainer, RegexSet, RegexSet) {
     let mut lc = InMemoryLanguageContainer::default();
     for &lang in predefined::LANGUAGES.iter() {
         lc.register_language(lang);
     }
-
     for &rule in predefined::HEURISTICS.iter() {
         lc.register_heuristic_rule(rule);
     }
 
-    let breakdown = LanguageBreakdown {
-        usages: HashMap::new(),
-        total_size: 0,
-    };
-
     let rules = RegexSet::new(predefined::VENDORS).unwrap();
     let docs = RegexSet::new(predefined::DOCUMENTATION).unwrap();
 
-    (lc, breakdown, rules, docs)
+    (lc, rules, docs)
 }
-/// Contains the information about a specific file during the retrieval phase
-/// Fields:
-/// - contents: the contents of the file as a string
-/// - name: the name of the file
-/// - id_hash: the hash of the file (SHA256)
-/// - ext: the extension of the file
-/// - language: the language of the file
-/// - file_size: the size of the file in bytes
-/// - loc: the number of lines of code in the file
-/// - file_change_frequency: [`FileChangeFrequency`] for the file
-#[derive(Debug)]
-pub(crate) struct SourceFileInfo {
-    pub(crate) contents: Arc<OsString>,
-    pub(crate) name: Arc<OsString>,
-    pub(crate) id_hash: Arc<OsString>,
-    pub(crate) ext: Arc<OsString>,
-    pub(crate) language: Option<Language>,
-    pub(crate) file_size: Option<u64>,
-    pub(crate) loc: Option<i64>,
-    pub(crate) file_change_frequency: Option<SourceFileChangeFrequency>,
-}
-/// Captures the file change frequency for a file
-/// Fields:
-/// - file_commits: the number of commits that the file has been changed in
-/// - total_commits: the total number of commits in the repository as reference
-/// - frequency: the frequency of the file being changed, as a ratio of file_commits to total_commits
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
-pub(crate) struct SourceFileChangeFrequency {
-    pub(crate) file_commits: usize,
-    pub(crate) total_commits: usize,
-    pub(crate) frequency: f32,
-}
-pub(crate) enum SourceFileError {
-    GitError(String),
-}
-impl fmt::Display for SourceFileError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            SourceFileError::GitError(name) => write!(f, "Git error: {}", name),
-        }
-    }
-}
-impl std::fmt::Debug for SourceFileError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::GitError(arg0) => f.debug_tuple("GitError").field(arg0).finish(),
-        }
-    }
-}
-impl From<git2::Error> for SourceFileError {
-    fn from(error: git2::Error) -> Self {
-        SourceFileError::GitError(error.message().to_string())
-    }
-}
-impl std::error::Error for SourceFileError {}
+
 /// Analyse the file language, returning the language, file size and lines of code
+/// #Returns:
+/// - Some((Language, file_size u64, loc i64)) if successful
 // TODO: refactor to handle documentation, dotfiles, etc.
-pub(crate) fn analyse_file_language(
-    file_info: &SourceFileInfo,
-    lc: &InMemoryLanguageContainer,
-    _rules: &RegexSet,
-    _docs: &RegexSet,
-) -> Option<(Language, u64, i64)> {
+// TODO: refactor all this as it stinks
+pub(crate) fn analyse_file_language(file_info: &mut SourceFileInfo) -> Option<&SourceFileInfo> {
+    let (lc, rules, docs) = initialize_language_analysis();
+
     // TODO: resolve the type of file if docs, dotfile, or config and handle separately, particularly documentation, which needs to be summarised
-    // if is_vendor(entry.path(), rules)
-    //     || is_documentation(relative_path, docs)
-    //     || is_dotfile(relative_path)
-    //     || is_configuration(relative_path)
-    // {
-    //     // TODO: handle if is_documentation: if so then work out frequency; higher the count the better for overall RAG
-    //     //          if no documentation then needs to be in repository summary and flagged as issue
-    //     //          - i.e. best practice is that documentation is versioned with code, new developers will find it more easily, etc.
-    //     return None;
-    // }
+    // [`linguist`] crate doesn't handle this very well, so need to resolve as the maintainer is very quiet
+    if is_vendor_from_str(file_info.relative_path.clone(), &rules)
+        || is_documentation_from_str(file_info.relative_path.clone(), &docs)
+        || is_dotfile_from_str(file_info.relative_path.clone())
+        || is_configuration_from_str(file_info.language.extension.clone())
+    {
+        // TODO: handle if is_documentation: if so then work out frequency; higher the count the better for overall RAG
+        //          if no documentation then needs to be in repository summary and flagged as issue
+        //          - i.e. best practice is that documentation is versioned with code, new developers will find it more easily, etc.
+        return None;
+    }
+
+    // Use the Linguist crate to determine the language
     let language: &Language = match resolve_language_from_content_str(
-        file_info.contents.as_os_str(),
-        file_info.name.as_os_str(),
-        file_info.ext.as_os_str(),
-        lc,
+        file_info.get_source_file_contents(),
+        file_info.language.name.clone(),
+        file_info.language.extension.clone(),
+        &lc,
     ) {
         Ok(Some(lang)) => lang,
         _ => return None,
     };
-
     if language.scope != Scope::Programming && language.scope != Scope::Markup {
         return None;
     }
 
-    let file_size = match get_file_contents_size(file_info.contents.as_os_str()) {
-        Ok(size) => size,
+    let file_size: i64 = match get_file_contents_size(file_info.get_source_file_contents()) {
+        Ok(size) => size as i64,
         Err(e) => {
             error!("Error when determining file size: {}", e);
             0
         }
     };
-    let loc: i64 = match count_lines_of_code(&file_info.contents) {
+    let loc: i64 = match count_lines_of_code(file_info.get_source_file_contents()) {
         Ok(num_lines) => num_lines,
         Err(e) => {
             error!("Error when determining lines of code: {}", e);
             0
         }
     };
+    file_info.statistics.size = file_size;
+    file_info.statistics.loc = loc;
+    file_info.statistics.num_files += 1;
 
-    Some((language.clone(), file_size, loc))
+    Some(file_info)
 }
 
-/// Calculates the RAG status for a [`FileReview`] on the number of errors, improvements and security_issues, according to lines of code
+/// Calculates the RAG status for a [`SourceFileReview`] on the number of errors, improvements and security_issues, according to lines of code
 pub(crate) fn calculate_rag_status_for_reviewed_file(
     reviewed_file: &SourceFileReview,
 ) -> Option<RAGStatus> {
@@ -173,10 +117,7 @@ pub(crate) fn calculate_rag_status_for_reviewed_file(
         .security_issues
         .as_ref()
         .map_or(0, |issues| issues.len());
-    let loc = reviewed_file
-        .statistics
-        .as_ref()
-        .map_or(0, |statistics| statistics.loc.unwrap());
+    let loc = reviewed_file.source_file_info.statistics.loc;
 
     let error_ratio = errors_count as f64 / loc as f64;
     let security_issues_ratio = security_issues_count as f64 / loc as f64;
@@ -223,15 +164,11 @@ fn get_file_contents_size(file_contents: impl AsRef<OsStr>) -> Result<u64, &'sta
 
 /// Function to count lines of code in a file, skipping comments and empty lines
 // TODO: shift to using tokei crate to improve maintainability and accuracy
-fn count_lines_of_code(file_content: impl AsRef<OsString>) -> Result<i64, &'static str> {
-    let content_str = file_content
-        .as_ref()
-        .to_str()
-        .ok_or("Invalid UTF-8 content")?;
+fn count_lines_of_code(file_content: String) -> Result<i64, &'static str> {
     let mut is_comment_block = false;
     let mut functional_lines = 0;
 
-    for line in content_str.lines() {
+    for line in file_content.lines() {
         let line = line.trim();
         if line.starts_with("/*") {
             is_comment_block = true;
@@ -253,42 +190,6 @@ fn count_lines_of_code(file_content: impl AsRef<OsString>) -> Result<i64, &'stat
     Ok(functional_lines)
 }
 
-/// Contains the breakdown of languages used in the repository as derived from the Linguist crate
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
-pub(crate) struct LanguageBreakdown {
-    pub(crate) usages: HashMap<String, HashMap<String, (u64, i32, i64)>>, // size, count, loc
-    pub(crate) total_size: u64,
-}
-impl LanguageBreakdown {
-    pub(crate) fn add_usage(&mut self, lang: &str, ext: &str, size: u64, loc: i64) {
-        let language_entry = self.usages.entry(lang.to_string()).or_default();
-        let entry = language_entry.entry(ext.to_string()).or_insert((0, 0, 0));
-        entry.0 += size; // Increase size
-        entry.1 += 1; // Increment file count
-        entry.2 += loc; // Increment LOC
-        self.total_size += size;
-    }
-    pub(crate) fn to_language_file_types(&self) -> Vec<LanguageFileType> {
-        let mut types = Vec::new();
-
-        for (language, extensions) in &self.usages {
-            for (extension, &(size, count, loc)) in extensions {
-                let percentage = (size as f64 / self.total_size as f64) * 100.0;
-                types.push(LanguageFileType {
-                    language: Some(language.clone()),
-                    extension: Some(extension.clone()),
-                    percentage: Some(percentage),
-                    loc: Some(loc),
-                    total_size: Some(size),
-                    file_count: Some(count),
-                    file_change_frequency: None,
-                });
-            }
-        }
-        types
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -302,79 +203,11 @@ mod tests {
 
     #[test]
     fn test_count_lines_of_code() {
-        let file_content: OsString = OsString::from(
-            r#"fn main() { // line 1 \n
+        let file_content: &str = r#"fn main() { // line 1 \n
                 // this comment line doesn't add to the loc\n
-                println!(\"Hello, world!\"); // line 2 \n
-            } // line 3 "#,
-        );
-        let arc_os_string: Arc<OsString> = Arc::new(file_content);
-        let result: Result<i64, &str> = count_lines_of_code(arc_os_string);
+                rror!(\"Hello, world!\"); // line 2 \n
+            } // line 3 "#;
+        let result: Result<i64, &str> = count_lines_of_code(file_content.to_string());
         assert_eq!(result, Ok(3));
-    }
-
-    #[test]
-    fn test_language_breakdown_add_usage() {
-        let mut breakdown = LanguageBreakdown {
-            usages: HashMap::new(),
-            total_size: 0,
-        };
-        breakdown.add_usage("Rust", "rs", 100, 10);
-        breakdown.add_usage("Rust", "toml", 50, 5);
-
-        let expected_usages: HashMap<String, HashMap<String, (u64, i32, i64)>> = [(
-            "Rust".to_string(),
-            [
-                ("rs".to_string(), (100, 1, 10)),
-                ("toml".to_string(), (50, 1, 5)),
-            ]
-            .iter()
-            .cloned()
-            .collect(),
-        )]
-        .iter()
-        .cloned()
-        .collect();
-
-        assert_eq!(breakdown.usages, expected_usages);
-        assert_eq!(breakdown.total_size, 150);
-    }
-
-    #[test]
-    fn test_language_breakdown_to_language_file_types() {
-        let mut breakdown = LanguageBreakdown {
-            usages: HashMap::new(),
-            total_size: 0,
-        };
-        breakdown.add_usage("Rust", "rs", 100, 10);
-        breakdown.add_usage("Rust", "toml", 50, 5);
-
-        let mut result: Vec<LanguageFileType> = breakdown.to_language_file_types();
-
-        let mut expected_result: Vec<LanguageFileType> = vec![
-            LanguageFileType {
-                language: Some("Rust".to_string()),
-                extension: Some("toml".to_string()),
-                percentage: Some(33.33333333333333),
-                loc: Some(5),
-                total_size: Some(50),
-                file_count: Some(1),
-                file_change_frequency: None,
-            },
-            LanguageFileType {
-                language: Some("Rust".to_string()),
-                extension: Some("rs".to_string()),
-                percentage: Some(66.66666666666666),
-                loc: Some(10),
-                total_size: Some(100),
-                file_count: Some(1),
-                file_change_frequency: None,
-            },
-        ];
-
-        result.sort_by(|a, b| a.extension.cmp(&b.extension));
-        expected_result.sort_by(|a, b| a.extension.cmp(&b.extension));
-
-        assert_eq!(result, expected_result);
     }
 }

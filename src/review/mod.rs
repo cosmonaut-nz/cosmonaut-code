@@ -11,16 +11,13 @@ pub(crate) mod report;
 use crate::provider::api::ProviderCompletionResponse;
 use crate::provider::prompts::PromptData;
 use crate::provider::{review_or_summarise, RequestType};
-use crate::retrieval::code::{
-    analyse_file_language, calculate_rag_status_for_reviewed_file, initialize_language_analysis,
-    LanguageBreakdown, SourceFileChangeFrequency, SourceFileInfo,
-};
+use crate::retrieval::code::{analyse_file_language, calculate_rag_status_for_reviewed_file};
+use crate::retrieval::data::{LanguageType, SourceFileInfo};
 use crate::retrieval::git::repository::get_blacklist_dirs;
 use crate::retrieval::git::source_file::get_file_change_frequency;
 use crate::retrieval::git::{contributor::get_git_contributors, repository::is_not_blacklisted};
 use crate::review::data::{
-    LanguageFileType, RAGStatus, RepositoryReview, ReviewBreakdown, SecurityIssueBreakdown,
-    Severity, SourceFileReview,
+    RAGStatus, RepositoryReview, ReviewSummary, SecurityIssueBreakdown, Severity, SourceFileReview,
 };
 use crate::review::report::create_report;
 use crate::settings::{ProviderSettings, ReviewType, ServiceSettings, Settings};
@@ -29,11 +26,8 @@ use log::{debug, error, info, warn};
 use regex::Regex;
 use sha2::{Digest, Sha256};
 use std::error::Error;
-use std::ffi::OsStr;
-use std::fmt;
-use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::{fmt, fs};
 use walkdir::{DirEntry, WalkDir};
 
 /// Takes the filepath to a repository and iterates over the code, gaining stats, and sending each relevant file for review.
@@ -42,11 +36,17 @@ use walkdir::{DirEntry, WalkDir};
 ///
 /// * `settings` - A [`Settings`] that contains information for the LLM
 ///
+// TODO: Heavy refactor. Re-assess and re-implement, first via heavy commentary of what I should be doing, which is represented by the 'RepositoryReview' struct
 pub(crate) async fn assess_codebase(
     settings: Settings,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    let mut review = initialise_repository_review(&settings)?;
+    // 1. Start-point: is this a valid git repository?
     let repository_root = validate_repository(PathBuf::from(&settings.repository_path))?;
+
+    // 2. Initialise the RepositoryReview
+    let mut review: RepositoryReview = initialise_repository_review(&settings)?;
+
+    // 3. Add the service and model to the review
     review.generative_ai_service_and_model(get_service_and_model(&settings));
 
     info!(
@@ -55,96 +55,79 @@ pub(crate) async fn assess_codebase(
         review.generative_ai_service_and_model.clone().unwrap()
     );
 
-    let blacklisted_dirs = get_blacklist_dirs(&repository_root);
+    // 5. Initialise the overall ReviewSummary
+    let mut review_summary: ReviewSummary = initialise_review_summary();
 
-    let (lc, mut breakdown, rules, docs) = initialize_language_analysis();
-    let mut review_breakdown: ReviewBreakdown = initialise_review_breakdown();
+    // 6. Initialise the file count that we will use to show how many files were processed
+    let mut overall_processed_files = 0;
 
-    let mut overall_file_count = 0;
+    // 7. There needs to be a Vec of unique LanguageTypes
+    let mut breakdown: Vec<LanguageType> = Vec::new();
 
-    for entry in get_files_from_repository(&repository_root, &blacklisted_dirs) {
-        let result: Option<SourceFileInfo> =
-            get_file_info(&entry, &repository_root).and_then(|file_info: SourceFileInfo| {
-                analyse_file_language(&file_info, &lc, &rules, &docs).map(
-                    |(language, file_size, loc)| SourceFileInfo {
-                        contents: file_info.contents,
-                        name: file_info.name,
-                        id_hash: file_info.id_hash,
-                        ext: file_info.ext,
-                        language: Some(language),
-                        file_size: Some(file_size),
-                        loc: Some(loc),
-                        file_change_frequency: file_info.file_change_frequency,
-                    },
-                )
-            });
-
+    // 8. Iterate over the files in the repository that are not blacklisted
+    for entry in valid_files_from_repository(&repository_root) {
         #[cfg(debug_assertions)]
         if settings.is_developer_mode() {
             if let Some(max_count) = settings.developer_mode.as_ref().unwrap().max_file_count {
-                if max_count >= 0 && overall_file_count >= max_count {
+                if max_count >= 0 && overall_processed_files >= max_count {
                     continue;
                 }
             }
         }
 
-        if let Some(file_info) = result {
-            overall_file_count += 1;
-            update_language_breakdown(&mut breakdown, &file_info);
+        let result: Option<SourceFileInfo> =
+            // 9. Get the file info, including the file contents
+            get_file_info(&entry, &repository_root);
 
-            if let Some(file_name_str) = file_info.name.to_str() {
-                if let Some(contents_str) = file_info.contents.to_str() {
-                    match review_file(
-                        &settings,
-                        &file_name_str.to_string(),
-                        &contents_str.to_string(),
-                    )
-                    .await
-                    {
-                        Ok(Some(mut reviewed_file)) => {
-                            update_review_breakdown(
-                                &mut review_breakdown,
-                                &mut reviewed_file,
-                                &file_info,
-                            );
-                            review.sum_num_commits(Some(
-                                reviewed_file
-                                    .clone()
-                                    .statistics
-                                    .unwrap()
-                                    .file_change_frequency
-                                    .unwrap()
-                                    .total_commits,
-                            ));
-                            review.add_file_review(reviewed_file);
-                        }
-                        Ok(None) => warn!("No review actioned. None returned from 'review_file'"),
-                        Err(e) => return Err(e),
-                    }
-                } else {
-                    error!(
-                        "Contents of the code file, {:?}, are not valid UTF-8, skipping.",
-                        entry.file_name()
-                    );
-                }
+        if let Some(file_info) = result {
+            overall_processed_files += 1;
+
+            // 10. Add the LanguageType to the Vec
+            if !breakdown.contains(&file_info.language) {
+                breakdown.push(file_info.language.clone());
             } else {
-                error!(
-                    "File name, {:?}, is not valid UTF-8, skipping.",
-                    entry.file_name()
-                );
+                // update statistics
+                let index = breakdown
+                    .iter()
+                    .position(|x| *x == file_info.language)
+                    .unwrap();
+                breakdown[index].statistics.size += file_info.statistics.size;
+                breakdown[index].statistics.loc += file_info.statistics.loc;
+                breakdown[index].statistics.num_files += 1;
+            }
+
+            let file_name_str = file_info.name.clone();
+            let contents_str = file_info.get_source_file_contents();
+            // 11. Actually review the file via the LLM, returns a SourceFileReview, can we pre-seed specific data from the static information?
+            //     shouldn't we be able to send in a suitable struct here, such as SourceFileInfo that has been prepopulated?
+            match review_file(
+                &settings,
+                &file_name_str.to_string(),
+                &contents_str.to_string(),
+            )
+            .await
+            {
+                Ok(Some(mut reviewed_file)) => {
+                    update_file_review_from_info(&mut review_summary, &mut reviewed_file);
+
+                    review.statistics.size += file_info.statistics.size;
+                    review.statistics.loc += file_info.statistics.loc;
+                    review.statistics.num_commits += file_info.statistics.num_commits;
+                    review.statistics.num_files += 1;
+
+                    reviewed_file.source_file_info = file_info.clone();
+                    // 10. Add SourceFileReview to the RepositoryReview
+                    review.add_source_file_review(reviewed_file);
+                }
+                Ok(None) => warn!("No review actioned. None returned from 'review_file'"),
+                Err(e) => return Err(e),
             }
         }
-    }
+    } // end get_files_from_repository
 
-    finalise_review(
-        &mut review,
-        overall_file_count,
-        &mut review_breakdown,
-        &breakdown,
-        &settings,
-    )
-    .await?;
+    finalise_review(&mut review, &mut review_summary, &breakdown, &settings).await?;
 
+    // Should be good to go now, so create the report
     create_report(&settings, &review)
 }
 
@@ -156,7 +139,6 @@ fn get_service_and_model(settings: &Settings) -> Option<String> {
         provider.name, service.name, service.model
     ))
 }
-
 /// Initialises a new [`RepositoryReview`] according to the configured name from path
 fn initialise_repository_review(
     settings: &Settings,
@@ -166,21 +148,19 @@ fn initialise_repository_review(
     Ok(RepositoryReview::new(repository_name.to_string()))
 }
 /// gets files from non-blacklisted dirs (that are not symlinks)
-fn get_files_from_repository(
-    repository_root: &PathBuf,
-    blacklisted_dirs: &[String],
-) -> Vec<DirEntry> {
+fn valid_files_from_repository(repository_root: &PathBuf) -> Vec<DirEntry> {
+    let blacklisted_dirs = get_blacklist_dirs(repository_root);
     WalkDir::new(repository_root)
         .into_iter()
-        .filter_entry(|e| is_not_blacklisted(e, blacklisted_dirs) && !e.file_type().is_symlink())
+        .filter_entry(|e| is_not_blacklisted(e, &blacklisted_dirs) && !e.file_type().is_symlink())
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
         .collect()
 }
 /// TODO: to implement the review of the state of documentation, etc.
-fn initialise_review_breakdown() -> ReviewBreakdown {
-    ReviewBreakdown {
-        summary: String::new(),
+fn initialise_review_summary() -> ReviewSummary {
+    ReviewSummary {
+        text: String::new(),
         security_issues: SecurityIssueBreakdown {
             low: 0,
             medium: 0,
@@ -193,94 +173,66 @@ fn initialise_review_breakdown() -> ReviewBreakdown {
         documentation: None,
     }
 }
-///
-fn update_language_breakdown(breakdown: &mut LanguageBreakdown, file_info: &SourceFileInfo) {
-    if let Some(language) = &file_info.language {
-        let language_name = language.name.clone();
-        let file_extension = file_info.ext.to_str().unwrap_or_default().to_string();
-        let file_size = file_info.file_size.unwrap_or(0);
-        let loc = file_info.loc.unwrap_or(0);
-        breakdown.add_usage(&language_name, &file_extension, file_size, loc);
-    }
-}
-
-fn update_review_breakdown(
-    review_breakdown: &mut ReviewBreakdown,
+fn update_file_review_from_info(
+    review_summary: &mut ReviewSummary,
     reviewed_file: &mut SourceFileReview,
-    file_info: &SourceFileInfo,
 ) {
-    review_breakdown.errors += reviewed_file.errors.as_ref().map_or(0, Vec::len) as i32;
-    review_breakdown.improvements += reviewed_file.improvements.as_ref().map_or(0, Vec::len) as i32;
+    review_summary.errors += reviewed_file.errors.as_ref().map_or(0, Vec::len) as i32;
+    review_summary.improvements += reviewed_file.improvements.as_ref().map_or(0, Vec::len) as i32;
 
     if let Some(issues) = &reviewed_file.security_issues {
         for issue in issues {
-            review_breakdown.security_issues.total += 1;
+            review_summary.security_issues.total += 1;
             match issue.severity {
-                Severity::Low => review_breakdown.security_issues.low += 1,
-                Severity::Medium => review_breakdown.security_issues.medium += 1,
-                Severity::High => review_breakdown.security_issues.high += 1,
-                Severity::Critical => review_breakdown.security_issues.critical += 1,
+                Severity::Low => review_summary.security_issues.low += 1,
+                Severity::Medium => review_summary.security_issues.medium += 1,
+                Severity::High => review_summary.security_issues.high += 1,
+                Severity::Critical => review_summary.security_issues.critical += 1,
             }
         }
     }
-    review_breakdown.summary.push_str(&reviewed_file.summary);
-    review_breakdown.summary.push('\n');
+    review_summary.text.push_str(&reviewed_file.summary);
+    review_summary.text.push('\n');
 
-    let file_statistics = LanguageFileType {
-        language: file_info
-            .language
-            .as_ref()
-            .map_or(Some(String::new()), |lang| Some(lang.name.clone())),
-        extension: Some(file_info.ext.to_string_lossy().into_owned()),
-        percentage: Some(0.0),
-        loc: Some(file_info.loc.unwrap_or(0)),
-        total_size: Some(file_info.file_size.unwrap_or(0)),
-        file_count: Some(1),
-        file_change_frequency: file_info.file_change_frequency.clone(),
-    };
-    reviewed_file.statistics = Some(file_statistics);
     reviewed_file.file_rag_status =
         calculate_rag_status_for_reviewed_file(reviewed_file).unwrap_or_default();
-    reviewed_file.id_hash = Some(file_info.id_hash.to_string_lossy().into_owned());
 }
 
+/// A dog's breakfast of a function that finalises the review, including the summary, and the overall RAG status
 async fn finalise_review(
     review: &mut RepositoryReview,
-    overall_file_count: i32,
-    review_breakdown: &mut ReviewBreakdown,
-    breakdown: &LanguageBreakdown,
+    review_summary: &mut ReviewSummary,
+    breakdown: &[LanguageType],
     settings: &Settings,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if !review.file_reviews.is_empty() {
-        match summarise_review_breakdown(settings, review_breakdown).await {
+        match summarise_review_summaries(settings, review_summary).await {
             Ok(Some(summary)) => {
-                review_breakdown.summary = summary;
+                review_summary.text = summary;
             }
             Ok(None) => {
                 warn!("Summary response was returned as 'None'!");
-                review_breakdown.summary = String::new();
+                review_summary.text = String::new();
             }
             Err(e) => return Err(e),
         };
     }
-    review.summary(Some(review_breakdown.clone()));
+    // and finally TODO: Update the percentage on the LanguageTypes from the SourceFileInfo.statistics.size
 
-    let predominant_language =
-        LanguageFileType::get_predominant_language(&breakdown.to_language_file_types())
-            .unwrap_or_else(|| "UNKNOWN".to_string());
+    review.summary(Some(review_summary.clone()));
+
+    let predominant_language: String = LanguageType::get_predominant_language(breakdown);
     review.repository_type(Some(predominant_language));
 
     review.date(get_review_date());
 
-    review.repository_purpose(None); // TODO Implement if required
+    review.repository_purpose(None); // TODO Implement this and incorporate the documentation status
+
     review.repository_rag_status(get_overall_rag_for(review));
 
-    review.sum_num_files(Some(overall_file_count));
-    review.sum_loc(Some(LanguageFileType::sum_lines_of_code(
-        &breakdown.to_language_file_types(),
-    )));
     review.contributors(get_git_contributors(&settings.repository_path));
-    review.language_file_types(breakdown.to_language_file_types());
+
+    review.language_types(breakdown.to_vec());
 
     Ok(())
 }
@@ -376,23 +328,27 @@ fn process_response(
             })
         })
 }
-/// ask the LLM to summarise to whole set of [`SourceFileReview`] summaries into a single repository summary
-pub(crate) async fn summarise_review_breakdown(
+/// Asks the LLM to summarise a concat text of [`SourceFileReview`] summaries (in `review_summary.text`) into a concise overall repository summary
+/// # Parameters:
+/// * `settings` - A [`Settings`] that contains information for the LLM
+/// * `review_summary` - A [`ReviewSummary`] that contains the summaries (as text) of each [`SourceFileReview`]
+pub(crate) async fn summarise_review_summaries(
     settings: &Settings,
-    review_breakdown: &ReviewBreakdown,
+    review_summary: &ReviewSummary,
 ) -> Result<Option<String>, Box<dyn std::error::Error>> {
     info!("Creating repository summary statement");
 
     let provider: &ProviderSettings = get_provider(settings);
     let mut prompt_data: PromptData = PromptData::get_overall_summary_prompt()?;
 
-    debug!("Input review summaries: {}", review_breakdown.summary);
+    debug!("Input review summaries: {}", review_summary.text);
 
-    let summary_request: String = review_breakdown.summary.to_string();
+    let summary_request: String = review_summary.text.to_string();
     prompt_data.add_user_message_prompt(summary_request);
 
     let response_result: Result<ProviderCompletionResponse, Box<dyn Error>> =
         review_or_summarise(RequestType::Summarise, settings, provider, &prompt_data).await;
+    // TODO: provide a suitable reponse that hides the implementation details
     match response_result {
         Ok(response) => Ok(Some(
             response.choices[0]
@@ -425,32 +381,39 @@ fn validate_repository(repository_root: PathBuf) -> Result<PathBuf, PathError> {
 
     Ok(repository_root)
 }
+
 /// gets the content, filename and extension of a [`walkdir::DirEntry`]
 fn get_file_info(entry: &DirEntry, repo_root: &PathBuf) -> Option<SourceFileInfo> {
     let path = entry.path();
-
-    // Calculate the relative path from the repository root
     let relative_path = path.strip_prefix(repo_root).ok()?.to_path_buf();
 
+    let file_name = path.file_name().unwrap().to_str().unwrap().to_string();
+    let relative_path_str = relative_path.to_str()?.to_string();
+
     let contents = fs::read_to_string(path).ok()?;
-    let name = relative_path.to_str()?;
     let id_hash = calculate_hash(&contents);
-    let ext = path.extension()?.to_os_string();
+    let ext = path.extension()?.to_str()?.to_string();
 
-    let fcf: SourceFileChangeFrequency =
-        get_file_change_frequency(repo_root.to_str()?, name).ok()?;
+    let stats = get_file_change_frequency(repo_root.to_str()?, &relative_path_str)
+        .ok()?
+        .get_as_statistics();
+    let language = LanguageType {
+        name: String::new(),
+        extension: ext,
+        statistics: stats.clone(),
+    };
+    let file_info: &mut SourceFileInfo = &mut SourceFileInfo::new(
+        file_name,
+        relative_path_str,
+        language,
+        id_hash,
+        stats.clone(),
+    );
+    file_info.set_source_file_contents(contents);
 
-    Some(SourceFileInfo {
-        contents: Arc::new(OsStr::new(&contents).to_os_string()),
-        name: Arc::new(OsStr::new(name).to_os_string()),
-        id_hash: Arc::new(OsStr::new(&id_hash).to_os_string()),
-        ext: Arc::new(ext),
-        language: None,
-        file_size: None,
-        loc: None,
-        file_change_frequency: Some(fcf),
-    })
+    analyse_file_language(file_info).cloned()
 }
+
 /// gives an overall [`RAGStatus`] for the passed [`RepositoryReview`]
 fn get_overall_rag_for(review: &RepositoryReview) -> RAGStatus {
     if let Some(breakdown) = &review.summary {

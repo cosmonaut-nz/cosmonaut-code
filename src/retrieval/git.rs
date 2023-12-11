@@ -54,15 +54,15 @@ pub(crate) mod repository {
     }
 }
 
-/// Functions to gather data on files in 'git' repositories
+/// Functions to gather data on source files in 'git' repositories
 pub(crate) mod source_file {
-    use crate::retrieval::code::{SourceFileChangeFrequency, SourceFileError};
+    use crate::retrieval::data::{SourceFileChangeFrequency, SourceFileError};
     use git2::{Commit, DiffDelta, Repository, Revwalk, Tree};
 
     /// Gets the file change frequency for the file passed as 'file_path' in the repository passed as 'repo_path'
     /// Returns:
-    ///   - Ok(SourceFileChangeFrequency) if successful
-    ///   - Err(SourceFileError) if unsuccessful
+    ///   - Ok([`SourceFileChangeFrequency`]) if successful
+    ///   - Err([`SourceFileError`]) if unsuccessful
     pub(crate) fn get_file_change_frequency(
         repo_path: &str,
         file_path: &str,
@@ -71,8 +71,8 @@ pub(crate) mod source_file {
         let mut revwalk: Revwalk<'_> = repo.revwalk()?;
         revwalk.push_head()?;
 
-        let mut total_commits: usize = 0;
-        let mut file_commits: usize = 0;
+        let mut total_commits: i32 = 0;
+        let mut file_commits: i32 = 0;
 
         for commit_id in revwalk {
             let commit: Commit<'_> = repo.find_commit(commit_id?)?;
@@ -101,7 +101,7 @@ pub(crate) mod source_file {
                 )?;
             }
         }
-        let frequency = (file_commits as f32 / total_commits as f32) * 100.00;
+        let frequency = file_commits as f32 / total_commits as f32 * 100.00;
 
         Ok(SourceFileChangeFrequency {
             file_commits,
@@ -113,11 +113,19 @@ pub(crate) mod source_file {
 
 /// Functions to gather data on the 'git' contributors
 pub(crate) mod contributor {
-    use crate::review::data::Contributor;
     use chrono::{DateTime, NaiveDateTime, Utc};
     use git2::Repository;
     use std::collections::HashMap;
-    /// Gets the contributors from the repository passed as the 'repo_path'
+
+    use crate::retrieval::data::{Contributor, Statistics};
+    /// Gets the contributors from the repository passed as the 'repo_path'.
+    /// TODO: add other contributor statistics, e.g., frequency, lines of code changed in commits(?), num_files changed in commits(?), etc.
+    ///
+    /// #Arguments:
+    /// * `repo_path` - The path to the repository
+    ///
+    /// #Returns:
+    /// * A [`Vec`] of [`Contributor`]s
     pub(crate) fn get_git_contributors(repo_path: &str) -> Vec<Contributor> {
         let repo = Repository::open(repo_path).expect("Failed to open repository");
         let mut revwalk = repo.revwalk().expect("Failed to get revwalk");
@@ -145,9 +153,15 @@ pub(crate) mod contributor {
         contributions
             .into_iter()
             .map(|(name, (last_contribution, num_commits))| {
-                let percentage =
-                    (num_commits as f32 / total_contributions as f32 * 100.0).round() as i32;
-                Contributor::new(name, num_commits, last_contribution, percentage)
+                let percentage = num_commits as f32 / total_contributions as f32 * 100.0;
+                let statistics = Statistics {
+                    size: 0, // Not relevant for contributors
+                    loc: 0,
+                    num_files: 0,
+                    num_commits,
+                    frequency: 0.0,
+                };
+                Contributor::new(name, last_contribution, percentage, statistics)
             })
             .collect()
     }
