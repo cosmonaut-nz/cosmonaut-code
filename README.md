@@ -20,7 +20,7 @@ it's in pure rust! so it gotta be good, right? :roll_eyes:
 
 ### non-goals
 
-1. provide a tool that will automagically improve a codebase.
+1. ~~provide a tool that will automagically improve a codebase.~~
 2. provide a tool that does not require further conversation, review or analysis of the code.
 3. provide a tool that does not require thinking or discussion.
 
@@ -37,7 +37,7 @@ it's in pure rust! so it gotta be good, right? :roll_eyes:
 
 ### disclaimer
 
-this is really early days. running over a really big repo with the latest model will be super slow and possibly fail. we've tested it up to ~1500 code files, what with timeout retries etc., takes a couple of hours, cost about $5 us. your mileage may vary. we think the value will come when it can be run over multiple models and compared and filtered.
+this is really early days. running over a really big repo with the latest model will be super slow and possibly fail. we've tested it up to ~1500 code files, what with timeout retries etc., takes a couple of hours, cost about 5 usd. your mileage may vary. we think the value will come when it can be run over multiple models and compared and filtered.
 
 it produces false flags. it overplays or (rarely downplays) security issues. there is significant variation between review runs on the same repository, particularly with older models.
 
@@ -70,8 +70,27 @@ configure: add a `settings.json`, maybe in the `settings` folder, with the follo
         "org_name": "[YOUR_OPENAI_ORG_NAME]"
     },
     "repository_path": "[FULL_PATH_TO_REPO]",
-    "report_output_path": "[FULL_PATH_TO_OUTPUT]"
+    "report_output_path": "[FULL_PATH_TO_OUTPUT]",
+    "chosen_service": "gpt-4",
+    "output_type": "html",
+    "review_type": "general",
 }
+
+`chosen_service` is in:
+
+1. `gpt-4` (default)
+2. `gpt-3.5`
+
+`review_type` is in:
+
+1. "general" = full review - (default)
+2. "security" = security review only
+3. "stats" = mock run, not using LLM for code review
+
+`output_type` is in:
+
+1. `html`
+2. `json` - (default)
 
 ```
 
@@ -85,42 +104,9 @@ run:
 
 ```
 
-_optional_
+## releases
 
-edit the `settings/default.json` to change the current defaults.
-
-see [openai models](https://platform.openai.com/docs/models/gpt-4-and-gpt-4-turbo) for details
-
-review type is:
-
-1. "general" = full review - (default)
-2. "security" = security review only
-3. "stats" = mock run, not using LLM for code review
-
-output types are:
-
-1. `html`
-2. `json` - (default)
-
-```json
-
-{
-    "providers": [
-        {
-            "name": "openai",
-            "service": "gpt-4",
-            "model": "gpt-4-1106-preview",
-            "api_url": "https://api.openai.com/v1/chat/completions"
-        }
-    ],
-    "default_provider": "openai",
-    "output_type": "json",
-    "review_type": "general"
-}
-
-```
-
-later there will be downloadable binaries so you don't have to install rust.
+coming soon: there will be downloadable binaries so you don't have to install rust.
 
 ## contributing
 
@@ -132,7 +118,7 @@ see [contributing](CONTRIBUTING.md) for the rules, they are standard though.
 
 we do our best to release working code. we hacked this out pretty quickly so the code's quality is not all that right now.
 
-status today is: *"it works, but it is not pretty or very user friendly."*
+status today is: *"it works, but it is not that pretty or that user friendly."*
 
 ## outline tasks
 
@@ -142,8 +128,8 @@ status today is: *"it works, but it is not pretty or very user friendly."*
 - [X] output in html
 - [ ] packaging so user can either install via `cargo install` or download the binary
 - [ ] output in pdf
-- [ ] (fine) tune the prompts for clarity and accuracy
-- [ ] more configuration and adjustment of prompts
+- [X] (fine) tune the prompts for clarity and accuracy
+- [X] more configuration and adjustment of prompts
 - [ ] github actions integration
 - [ ] enable private llm review of code (likely llama-based) run on a cloud service
 - [ ] proper documentation
@@ -155,4 +141,4 @@ status today is: *"it works, but it is not pretty or very user friendly."*
 
 `>_ we are cosmonaut`
 
-_copyright &#169; cosmonaut (new zealand) ltd, 2023_
+*copyright &#169; cosmonaut (new zealand) ltd, 2023*

@@ -324,6 +324,7 @@ async fn perform_review(
     }
 }
 /// processes the response returned by the LLM, stripping any artefacts, or illegal chars, then loading the JSON into a [`SourceFileReview`]
+/// TODO This is not very robust and needs moving out into the provider module
 fn process_llm_response(
     response: &ProviderCompletionResponse,
 ) -> Result<SourceFileReview, Box<dyn std::error::Error>> {
