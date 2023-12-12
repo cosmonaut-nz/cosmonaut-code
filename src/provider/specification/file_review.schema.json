@@ -18,7 +18,14 @@
         },
         "summary": {
             "type": "string",
-            "description": "A brief and concise summary of what the source file functionally does and of the findings during the code review ensuring that the summary reflects the findings, such as security_issues, errors or improvements."
+            "description": "A concise summary of what the source file functionally does and of the findings during the code review ensuring that the summary reflects the findings, such as security_issues, errors or improvements."
+        },
+        "security_issues": {
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/securityIssue"
+            },
+            "description": "A list of security issues, threats or vulnerabilities, such as listed by OWASP, or CVE security vulnerability, etc. Give the threat (and reference, such as listed by OWASP, CVE or any other security frameworks) and mitigation for each. Be attentive to ignore test code where the code is not intended to be production ready and therefore may not be secure by design"
         },
         "errors": {
             "type": "array",
@@ -26,13 +33,6 @@
                 "$ref": "#/$defs/error"
             },
             "description": "A list of syntatic or idiomatic errors (not security related) found in the code giving the issue and potential resolution for each. Where the code does not meet language standards, best practice or clearly deviates from DRY or SOLID principles"
-        },
-        "security_issues": {
-            "type": "array",
-            "items": {
-                "$ref": "#/$defs/securityIssue"
-            },
-            "description": "A list of security issues, threats or vulnerabilities, such as listed by OWASP, or CVE security vulnerability, etc. Give the threat (and reference, such as listed by OWASP, CVE or any other security frameworks) and mitigation for each"
         },
         "improvements": {
             "type": "array",
@@ -70,7 +70,7 @@
                 "statistics": {
                     "type": "Statistics",
                     "$ref": "#/$defs/statistics",
-                    "description": "Statistics for this SourceFileInfo"
+                    "description": "Statistics for this SourceFileInfo. Leave as null"
                 }
             },
             "required": [
@@ -170,13 +170,12 @@
                 "statistics": {
                     "type": "statistics",
                     "$ref": "#/$defs/statistics",
-                    "description": "Statistics for this LanguageType"
+                    "description": "Statistics for this LanguageType. Leave as null"
                 }
             },
             "required": [
                 "name",
-                "extension",
-                "statistics"
+                "extension"
             ]
         },
         "statistics": {
