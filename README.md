@@ -51,11 +51,20 @@ install rust; clone the repo.
 
 ```bash
 
->_ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
->_ git clone https://github.com/cosmonaut-nz/cosmonaut-code.git
+```
 
->_ cd cosmonaut-code
+```bash
+
+git clone https://github.com/cosmonaut-nz/cosmonaut-code.git
+
+
+```
+
+```bash
+
+cd cosmonaut-code
 
 ```
 
@@ -98,9 +107,13 @@ run:
 
 ```bash
 
->_ export SENSITIVE_SETTINGS_PATH=[PATH_TO_YOUR_SETTINGS.JSON]
+export SENSITIVE_SETTINGS_PATH=[PATH_TO_YOUR_SETTINGS.JSON]
 
->_ cargo run --release
+```
+
+```bash
+
+cargo run --release
 
 ```
 
