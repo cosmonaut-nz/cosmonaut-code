@@ -5,8 +5,6 @@
 // TODO refactor so that the settings are self-contained and are safe once loaded via the 'new' function
 use config::FileFormat;
 use config::{Config, ConfigError, File};
-use inquire::formatter::StringFormatter;
-use inquire::Text;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fmt;
@@ -92,41 +90,19 @@ impl Settings {
             Config::builder().add_source(File::from_str(DEFAULT_CONFIG, FileFormat::Json));
 
         let local_settings_path: Option<String> = env::var(ENV_SENSITIVE_SETTINGS_PATH).ok();
-        let config_builder: config::ConfigBuilder<config::builder::DefaultState> =
-                // try to get sensitive configuration data can be sourced as an env variable
-            if let Some(path) = local_settings_path {
-                config_builder.add_source(
-                    File::with_name(&path)
-                        .required(false)
-                        .format(FileFormat::Json),
-                )
-            } else { // TODO: Remove this to just use env variables - left in as it should flag as a security vuln, at least high sev
-                let formatter: StringFormatter = &|s| {
-                    let mut c = s.chars();
-                    match c.next() {
-                        None => String::from("No key given"),
-                        Some(_f) => {
-                            String::from("")
-                            + "*".repeat(s.len() - 1).as_str()
-                        }
-                    }
-                };
-                // Prompt user for settings via commandline
-                let repository_path = Text::new("Enter the path to a valid git repository").prompt();
-                let report_path = Text::new("Enter the path to where you'd like the report").prompt();
-                let provider_name = Text::new("Enter the provider you'd like to use").prompt();
-                let api_key = Text::new("Enter your provider API key").with_formatter(formatter).prompt();
-
-                // Build a config object with user-provided settings
-                config_builder
-                    .set_default(
-                        "repository_path",
-                        repository_path.unwrap(),
-                    )?
-                    .set_default("report_output_path", report_path.unwrap())?
-                    .set_default("chosen_provider", provider_name.unwrap())?
-                    .set_default("sensitive.api_key", api_key.unwrap())?
-            };
+        let config_builder: config::ConfigBuilder<config::builder::DefaultState> = if let Some(
+            path,
+        ) =
+            local_settings_path
+        {
+            config_builder.add_source(
+                File::with_name(&path)
+                    .required(false)
+                    .format(FileFormat::Json),
+            )
+        } else {
+            return Err(ConfigError::Message("No settings.json file found. Please set the environment variable 'SENSITIVE_SETTINGS_PATH' to point to a valid settings file.".to_string()));
+        };
         let config = config_builder.build()?;
 
         config.try_deserialize::<Settings>()
