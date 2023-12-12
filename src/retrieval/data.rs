@@ -79,9 +79,10 @@ pub(crate) struct LanguageType {
 impl LanguageType {
     /// gets the [`LanguageType`] from the linguist::Language
     pub(crate) fn from_language(language: &Language) -> Self {
-        let ext = language.extensions[0]
-            .as_os_str()
-            .to_str()
+        let ext = language
+            .extensions
+            .get(0)
+            .map(|os_str| os_str.to_str().unwrap_or_default())
             .unwrap_or_default();
         Self {
             name: language.name.clone(),

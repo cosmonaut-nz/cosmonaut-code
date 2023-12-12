@@ -135,29 +135,24 @@ fn update_language_type_statistics(
     lang_type_breakdown: &mut Vec<LanguageType>,
     file_info: &SourceFileInfo,
 ) {
-    if !lang_type_breakdown
+    match lang_type_breakdown
         .iter()
-        .any(|lang| lang.name == file_info.language.name)
+        .position(|lang| lang.name == file_info.language.name)
     {
-        info!("Adding language to breakdown: {}", file_info.language.name);
-        let mut lang_type = file_info.language.clone();
-        lang_type.statistics = Some(file_info.statistics.clone());
-
-        lang_type_breakdown.push(lang_type);
-    } else {
-        info!(
-            "Updating language in breakdown for: {}",
-            file_info.language.name
-        );
-        // update statistics
-        let index = lang_type_breakdown
-            .iter()
-            .position(|lang| lang.name == file_info.language.name)
-            .unwrap();
-        if let Some(language_stats) = &mut lang_type_breakdown[index].statistics {
-            language_stats.size += file_info.statistics.size;
-            language_stats.loc += file_info.statistics.loc;
-            language_stats.num_files += 1;
+        Some(index) => {
+            let language_stats = lang_type_breakdown
+                .get_mut(index)
+                .and_then(|lang| lang.statistics.as_mut());
+            if let Some(stats) = language_stats {
+                stats.size += file_info.statistics.size;
+                stats.loc += file_info.statistics.loc;
+                stats.num_files += 1;
+            }
+        }
+        None => {
+            let mut new_lang_type = file_info.language.clone();
+            new_lang_type.statistics = Some(file_info.statistics.clone());
+            lang_type_breakdown.push(new_lang_type);
         }
     }
 }
