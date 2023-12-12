@@ -33,9 +33,8 @@ it's in pure rust! so it gotta be good, right? :roll_eyes:
 5. entry-point for due diligence of technology assets.
 6. code owner reporting on technical-debt and general health of asset.
 
-## how to use
 
-### disclaimer
+## disclaimer
 
 this is really early days. running over a really big repo with the latest model will be super slow and possibly fail. we've tested it up to ~1500 code files, what with timeout retries etc., takes a couple of hours, cost about 5 usd. your mileage may vary. we think the value will come when it can be run over multiple models and compared and filtered.
 
@@ -45,28 +44,13 @@ right now it's a barebones offering. it works, and we have gotten value from it,
 
 use it as it is intended, as a start-point to a conversation on quality and current practices.
 
-### installation
+## usage
 
-install rust; clone the repo.
+Pre-release
 
-```bash
+[MacOS Apple Silicon](https://github.com/cosmonaut-nz/cosmonaut-code/releases/tag/v0.1.2)
 
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-```
-
-```bash
-
-git clone https://github.com/cosmonaut-nz/cosmonaut-code.git
-
-
-```
-
-```bash
-
-cd cosmonaut-code
-
-```
+### configuration
 
 configure: add a `settings.json`, maybe in the `settings` folder, with the following:
 
@@ -100,7 +84,7 @@ configure: add a `settings.json`, maybe in the `settings` folder, with the follo
 
 `output_type` is in:
 
-1. `html`
+1. `HTML`
 2. `json` - (default)
 
 run:
@@ -117,9 +101,38 @@ cargo run --release
 
 ```
 
-## releases
+## via rust locally
 
-coming soon: there will be downloadable binaries so you don't have to install rust.
+### tldr;
+
+install rust; clone the repo; cd repo; add config (see above); `cargo run`.
+
+```bash
+
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+```
+
+```bash
+
+git clone https://github.com/cosmonaut-nz/cosmonaut-code.git
+
+
+```
+
+```bash
+
+cd cosmonaut-code
+
+```
+
+Add settings (as per above)
+
+```bash
+
+cargo run
+
+```
 
 ## contributing
 
@@ -131,12 +144,12 @@ see [contributing](CONTRIBUTING.md) for the rules, they are standard though.
 
 we do our best to release working code. we hacked this out pretty quickly so the code's quality is not all that right now.
 
-status today is: *"it works, but it is not that pretty or that user friendly."*
+status today is: *"it works, but it is not that pretty or that user-friendly."*
 
 ## outline tasks
 
 - [X] load local repository
-- [X] enable openai review of code
+- [X] enable open review of code
 - [X] output in json
 - [X] output in html
 - [ ] packaging so user can either install via `cargo install` or download the binary
