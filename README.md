@@ -76,6 +76,8 @@ configure: add a `settings.json`, maybe in the `settings` folder, with the follo
     "review_type": "general",
 }
 
+```
+
 `chosen_service` is in:
 
 1. `gpt-4` (default)
@@ -91,8 +93,6 @@ configure: add a `settings.json`, maybe in the `settings` folder, with the follo
 
 1. `html`
 2. `json` - (default)
-
-```
 
 run:
 
