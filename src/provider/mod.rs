@@ -163,7 +163,11 @@ impl OpenAIProvider {
 /// Returns the provider and model from the settings file
 pub(crate) fn get_service_and_model(settings: &Settings) -> Option<String> {
     let provider: &ProviderSettings = get_provider(settings);
-    let service: &ServiceSettings = get_service(provider);
+    let service: &ServiceSettings = if let Some(chosen_service) = &settings.chosen_service {
+        provider.get_service_by_name(chosen_service)?
+    } else {
+        get_service(provider)
+    };
     Some(format!(
         "provider: {}, service: {}, model: {}",
         provider.name, service.name, service.model

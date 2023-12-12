@@ -48,9 +48,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         } else {
             info!("Taking developer path.");
 
-            dev_mode::_code_frequency::_test_total_commits(&settings)?;
-            dev_mode::_code_frequency::_test_code_frequency(&settings)?;
+            // dev_mode::code_frequency::_test_total_commits(&settings)?;
+            // dev_mode::code_frequency::_test_code_frequency(&settings)?;
             // dev_mode::_comment_summary::test_summary(&settings).await?;
+            dev_mode::test_settings::_test_provider_settings(&settings)?;
         }
     }
 

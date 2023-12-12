@@ -21,6 +21,8 @@ pub(crate) struct Settings {
     pub(crate) providers: Vec<ProviderSettings>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) chosen_provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) chosen_service: Option<String>,
     pub(crate) default_provider: String,
     pub(crate) output_type: OutputType,
     pub(crate) review_type: ReviewType,
@@ -38,6 +40,7 @@ impl fmt::Debug for Settings {
         f.debug_struct("Settings")
             .field("providers", &self.providers)
             .field("chosen_provider", &self.chosen_provider)
+            .field("chosen_service", &self.chosen_service)
             .field("default_provider", &self.default_provider)
             .field("output_type", &self.output_type)
             .field("review_type", &self.review_type)
@@ -53,6 +56,7 @@ impl fmt::Display for Settings {
         f.debug_struct("Settings")
             .field("providers", &self.providers)
             .field("chosen_provider", &self.chosen_provider)
+            .field("chosen_service", &self.chosen_service)
             .field("default_provider", &self.default_provider)
             .field("output_type", &self.output_type)
             .field("review_type", &self.review_type)
@@ -160,14 +164,22 @@ pub(crate) struct ProviderSettings {
 }
 impl ProviderSettings {
     pub(crate) fn get_active_service(&self) -> Result<&ServiceSettings, ServiceError> {
-        let service_name = self
-            .chosen_service
-            .as_ref()
-            .unwrap_or(&self.default_service);
-        self.services
-            .iter()
-            .find(|s| s.name == *service_name)
-            .ok_or_else(|| ServiceError::NotFound(service_name.clone()))
+        self.get_service_by_name(
+            self.chosen_service
+                .as_deref()
+                .unwrap_or(&self.default_service),
+        )
+        .ok_or_else(|| {
+            ServiceError::NotFound(
+                self.chosen_service
+                    .clone()
+                    .unwrap_or(self.default_service.clone()),
+            )
+        })
+    }
+    /// Gets a service by name
+    pub(crate) fn get_service_by_name(&self, name: &str) -> Option<&ServiceSettings> {
+        self.services.iter().find(|s| s.name == name)
     }
 }
 /// Custom Debug implementation for ProviderSettings
@@ -437,6 +449,7 @@ mod tests {
                 max_retries: Some(5),
             }],
             chosen_provider: None,
+            chosen_service: None,
             default_provider: "openai".to_string(),
             output_type: OutputType::Json,
             review_type: ReviewType::General,

@@ -57,7 +57,7 @@ pub mod comment_summary {
 }
 
 #[cfg(debug_assertions)]
-pub mod _code_frequency {
+pub mod code_frequency {
     use crate::{
         retrieval::{
             data::SourceFileChangeFrequency,
@@ -97,6 +97,27 @@ pub mod _code_frequency {
             fcf.total_commits,
             fcf.frequency
         );
+
+        Ok(())
+    }
+}
+
+#[cfg(debug_assertions)]
+pub mod test_settings {
+    use crate::{provider::get_service_and_model, settings::Settings};
+    use log::info;
+
+    pub(crate) fn _test_provider_settings(
+        settings: &Settings,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        info!("Mod: Testing settings.");
+
+        info!("Settings: {:?}", settings);
+
+        info!("chosen_provider: {:?}", settings.chosen_provider);
+        info!("chosen_service: {:?}", settings.chosen_service);
+
+        info!("Provider settings: {:?}", get_service_and_model(settings));
 
         Ok(())
     }
