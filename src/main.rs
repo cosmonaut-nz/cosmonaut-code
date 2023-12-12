@@ -10,10 +10,7 @@ mod retrieval;
 mod review;
 mod settings;
 use log::{error, info};
-use std::{
-    process::Command,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -58,7 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(not(debug_assertions))]
     {
         // Call the assess_codebase, according to user configuration, either from environment variables, or json settings files.
-        let report_output = review::assess_codebase(settings).await?;
+        review::assess_codebase(settings).await?;
     }
     print_exec_duration(start.elapsed());
     Ok(())
@@ -76,16 +73,21 @@ fn print_exec_duration(duration: Duration) {
         minutes, seconds, millis
     );
 }
+#[cfg(debug_assertions)]
 fn open_file_or_files(file_paths: &str) -> std::io::Result<()> {
     for file_path in file_paths.split(',') {
         if cfg!(target_os = "windows") {
-            Command::new("cmd")
+            std::process::Command::new("cmd")
                 .args(["/C", "start", file_path.trim()])
                 .spawn()?;
         } else if cfg!(target_os = "macos") {
-            Command::new("open").arg(file_path.trim()).spawn()?;
+            std::process::Command::new("open")
+                .arg(file_path.trim())
+                .spawn()?;
         } else if cfg!(target_os = "linux") {
-            Command::new("xdg-open").arg(file_path.trim()).spawn()?;
+            std::process::Command::new("xdg-open")
+                .arg(file_path.trim())
+                .spawn()?;
         } else {
             println!("Unsupported OS");
         }

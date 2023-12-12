@@ -59,6 +59,7 @@ pub(crate) async fn assess_codebase(
     let mut review_summary_section: ReviewSummary = initialise_review_summary_section();
 
     // Initialise a file count that we will use to show how many files were processed
+    #[cfg(debug_assertions)]
     let mut overall_processed_files = 0;
 
     // The RepositoryReview has a Vec<LanguageTypes>, initialise
@@ -81,7 +82,10 @@ pub(crate) async fn assess_codebase(
             get_initial_source_file_info(&entry, &repository_root);
 
         if let Some(file_info) = result {
-            overall_processed_files += 1;
+            #[cfg(debug_assertions)]
+            if settings.is_developer_mode() {
+                overall_processed_files += 1;
+            }
 
             // Add the LanguageType to the Vec<LanguageType>
             update_language_type_statistics(&mut lang_type_breakdown, &file_info);

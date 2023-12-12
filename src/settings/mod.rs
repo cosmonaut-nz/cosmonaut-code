@@ -142,6 +142,7 @@ impl Settings {
             .find(|p| p.name == *provider_name)
             .ok_or_else(|| ProviderError::NotFound(provider_name.clone()))
     }
+    #[cfg(debug_assertions)]
     pub(crate) fn is_developer_mode(&self) -> bool {
         self.developer_mode.is_some()
     }
