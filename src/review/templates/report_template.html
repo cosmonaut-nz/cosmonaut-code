@@ -128,9 +128,9 @@
             <p>Total lines of code (LOC): {{repository_review.statistics.loc}}</p>
             <p>Total number of files: {{repository_review.statistics.num_files}}</p>
             <p>Total commits to repository: {{repository_review.statistics.num_commits}}</p>
-            {{#if repository_review.summary.summary}}
+            {{#if repository_review.summary.text}}
             <div class="detailed-section">
-                <p style="font-size: smaller;">{{newline_to_br repository_review.summary.summary}}</p>
+                <p style="font-size: smaller;">{{newline_to_br repository_review.summary.text}}</p>
             </div>
             {{/if}}
             <div class="detailed-section">
@@ -160,14 +160,14 @@
         </div>
         <button type="button" class="collapsible"><strong>Language file types:</strong></button>
         <div class="content">
-            {{#each repository_review.language_file_types}}
+            {{#each repository_review.language_types}}
             <div class='section'>
-                <p><strong>Language</strong>: {{language}}</p>
+                <p><strong>Language</strong>: {{name}}</p>
                 <p><strong>Extension</strong>: &#46;{{extension}}</p>
-                <p><strong>Percentage</strong>: {{format_percentage percentage}}&#37;</p>
-                <p><strong>Loc</strong>: {{loc}}</p>
-                <p><strong>Total size</strong>: {{total_size}} bytes</p>
-                <p><strong>Total file count</strong>: {{file_count}}</p>
+                <p><strong>Percentage</strong>: {{format_percentage statistics.frequency}}&#37;</p>
+                <p><strong>Loc</strong>: {{statistics.loc}}</p>
+                <p><strong>Total size</strong>: {{statistics.size}} bytes</p>
+                <p><strong>Total file count</strong>: {{statistics.num_files}}</p>
             </div>
             {{/each}}
         </div>
@@ -176,9 +176,9 @@
             {{#each repository_review.contributors}}
             <div class='section'>
                 <p><strong>Name</strong>: {{name}}</p>
-                <p><strong>Num commits</strong>: {{num_commits}}</p>
+                <p><strong>Num commits</strong>: {{statistics.num_commits}}</p>
                 <p><strong>Last contribution</strong>: {{last_contribution}}</p>
-                <p><strong>Percentage</strong>: {{format_percentage percentage}}&#37;</p>
+                <p><strong>Percentage</strong>: {{format_percentage percentage_contribution}}&#37;</p>
             </div>
             {{/each}}
         </div>
@@ -188,9 +188,9 @@
             {{#each repository_review.file_reviews}}
             <div class='section'>
                 <p>
-                    <strong>Filename</strong>: {{filename}}
-                    {{#if id_hash}}
-                    <em style="font-size: smaller;"><strong>hash</strong>: {{id_hash}} (SHA256)</em>
+                    <strong>Filename</strong>: {{source_file_info.relative_path}}
+                    {{#if source_file_info.id_hash}}
+                    <em style="font-size: smaller;"><strong>hash</strong>: {{source_file_info.id_hash}} (SHA256)</em>
                     {{/if}}
                 </p>
                 <p><strong>Summary</strong>: {{summary}}</p>
@@ -201,13 +201,14 @@
                 <!-- TODO insert the overall rank of source_file_frequency -->
                 <p><strong>Statistics</strong>:
                 <div class='section' style="margin-left: 10px; font-size: smaller;">
-                    <p><strong>Language</strong>: {{statistics.language}}</p>
-                    <p><strong>Extension</strong>: &#46;{{statistics.extension}}</p>
-                    <p><strong>LOC</strong>: {{statistics.loc}}</p>
-                    <p><strong>File size</strong>: {{statistics.total_size}} bytes</p>
-                    <p><strong>Total commits</strong>: {{statistics.file_change_frequency.file_commits}}</p>
+                    <p><strong>Language</strong>: {{source_file_info.language.name}}</p>
+                    <p><strong>Extension</strong>: &#46;{{source_file_info.language.extension}}</p>
+                    <p><strong>LOC</strong>: {{source_file_info.statistics.loc}}</p>
+                    <p><strong>File size</strong>: {{source_file_info.statistics.size}} bytes</p>
+                    <p><strong>Total commits</strong>: {{source_file_info.statistics.num_commits}}
+                    </p>
                     <p><strong>File change frequency</strong>: {{format_percentage
-                        statistics.file_change_frequency.frequency}}%</p>
+                        source_file_info.statistics.frequency}}%</p>
                 </div>
                 </p>
                 {{#if security_issues}}

@@ -2,6 +2,7 @@
 use std::{ffi::OsString, fmt, sync::Arc};
 
 use chrono::{DateTime, Utc};
+use linguist::resolver::Language;
 use serde::{Deserialize, Serialize};
 
 /// Struct to hold statistics on the code in a repository
@@ -73,17 +74,31 @@ impl Contributor {
 pub(crate) struct LanguageType {
     pub(crate) name: String,
     pub(crate) extension: String,
-    pub(crate) statistics: Statistics,
+    pub(crate) statistics: Option<Statistics>,
 }
 impl LanguageType {
+    /// gets the [`LanguageType`] from the linguist::Language
+    pub(crate) fn from_language(language: &Language) -> Self {
+        let ext = language.extensions[0]
+            .as_os_str()
+            .to_str()
+            .unwrap_or_default();
+        Self {
+            name: language.name.clone(),
+            extension: ext.to_string(),
+            statistics: None,
+        }
+    }
     /// Method to check if an extension is valid among a collection of LanguageFileType
     pub(crate) fn _has_extension_of(ext: &str, file_types: &[LanguageType]) -> bool {
         file_types.iter().any(|lft| lft.extension == *ext)
     }
     /// Sums the lines of code for an array of [`LanguageType`]s
-    #[allow(dead_code)]
-    pub(crate) fn sum_lines_of_code(language_types: &[LanguageType]) -> i64 {
-        language_types.iter().map(|lt| lt.statistics.loc).sum()
+    fn sum_lines_of_code(language_types: &[LanguageType]) -> i64 {
+        language_types
+            .iter()
+            .filter_map(|lt| lt.statistics.as_ref().map(|s| s.loc))
+            .sum()
     }
     /// Gets the predominant language from an array of [`LanguageType`]s
     pub(crate) fn get_predominant_language(languages: &[LanguageType]) -> String {
@@ -92,21 +107,37 @@ impl LanguageType {
         let mut largest_size = 0_i64;
 
         for lang in languages {
-            if lang.statistics.frequency > highest_percentage
-                || (lang.statistics.frequency == highest_percentage
-                    && lang.statistics.size > largest_size)
-            {
-                highest_percentage = lang.statistics.frequency;
-                largest_size = lang.statistics.size;
-                predominant_language = lang.name.clone();
+            if let Some(statistics) = &lang.statistics {
+                if statistics.frequency > highest_percentage
+                    || (statistics.frequency == highest_percentage
+                        && statistics.size > largest_size)
+                {
+                    highest_percentage = statistics.frequency;
+                    largest_size = statistics.size;
+                    predominant_language = lang.name.clone();
+                }
             }
         }
         predominant_language
     }
+    /// Calculates percentage distribution of the [`LanguageType`]s - i.e., the percentage of
+    /// lines of code that each [`LanguageType`] in relation to each other and updates the [`Statistics`].frequency field for each [`LanguageType`]
+    pub(crate) fn calculate_percentage_distribution(languages: &mut [LanguageType]) {
+        let total_lines_of_code = LanguageType::sum_lines_of_code(languages);
+        for language in languages {
+            if let Some(statistics) = &mut language.statistics {
+                statistics.frequency = (statistics.loc as f32 / total_lines_of_code as f32) * 100.0;
+            }
+        }
+    }
     /// Formats the percentage to 2 decimal places - used in the HTML template
     #[allow(dead_code)]
     pub(crate) fn formatted_percentage(&self) -> String {
-        format!("{:.2}", self.statistics.frequency)
+        if let Some(statistics) = &self.statistics {
+            format!("{:.2}", statistics.frequency)
+        } else {
+            String::new()
+        }
     }
 }
 /// Represents the information for a specific source file during the static retrieval phase
@@ -229,12 +260,12 @@ mod tests {
             LanguageType {
                 name: "Rust".to_string(),
                 extension: ".rs".to_string(),
-                statistics: Statistics::new(),
+                statistics: None,
             },
             LanguageType {
                 name: "Python".to_string(),
                 extension: ".py".to_string(),
-                statistics: Statistics::new(),
+                statistics: None,
             },
         ];
 
@@ -248,24 +279,24 @@ mod tests {
             LanguageType {
                 name: "Rust".to_string(),
                 extension: ".rs".to_string(),
-                statistics: Statistics {
+                statistics: Some(Statistics {
                     loc: 100,
                     size: 2345,
                     num_files: 3,
                     num_commits: 12,
                     frequency: 12.34,
-                },
+                }),
             },
             LanguageType {
                 name: "Python".to_string(),
                 extension: ".py".to_string(),
-                statistics: Statistics {
+                statistics: Some(Statistics {
                     loc: 200,
                     size: 12345,
                     num_files: 10,
                     num_commits: 12,
                     frequency: 12.34,
-                },
+                }),
             },
         ];
 
@@ -278,35 +309,35 @@ mod tests {
             LanguageType {
                 name: "Rust".to_string(),
                 extension: ".rs".to_string(),
-                statistics: Statistics {
+                statistics: Some(Statistics {
                     loc: 100,
                     size: 2345,
                     num_files: 3,
                     num_commits: 12,
                     frequency: 12.34,
-                },
+                }),
             },
             LanguageType {
                 name: "Python".to_string(),
                 extension: ".py".to_string(),
-                statistics: Statistics {
+                statistics: Some(Statistics {
                     loc: 200,
                     size: 2345,
                     num_files: 3,
                     num_commits: 12,
                     frequency: 12.34,
-                },
+                }),
             },
             LanguageType {
                 name: "JavaScript".to_string(),
                 extension: ".js".to_string(),
-                statistics: Statistics {
+                statistics: Some(Statistics {
                     loc: 150,
                     size: 2345,
                     num_files: 3,
                     num_commits: 12,
                     frequency: 12.34,
-                },
+                }),
             },
         ];
 
@@ -323,7 +354,7 @@ mod tests {
         let language_type = LanguageType {
             name: "Rust".to_string(),
             extension: ".rs".to_string(),
-            statistics: stats,
+            statistics: Some(stats),
         };
 
         assert_eq!(language_type.formatted_percentage(), "0.12");

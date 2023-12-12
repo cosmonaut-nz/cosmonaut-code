@@ -8,7 +8,7 @@ use crate::provider::api::{
     ProviderMessageConverter, ProviderResponseConverter,
 };
 use crate::provider::prompts::PromptData;
-use crate::settings::{ProviderSettings, Settings};
+use crate::settings::{ProviderSettings, ServiceSettings, Settings};
 use log::{info, warn};
 use openai_api_rs::v1::api::Client;
 use openai_api_rs::v1::chat_completion::{ChatCompletionMessage, ChatCompletionRequest};
@@ -46,7 +46,6 @@ pub(crate) async fn review_or_summarise(
         ))),
     }
 }
-
 /// Creates an APIProvider according to provider_settings.name
 fn create_api_provider(
     provider_settings: &ProviderSettings,
@@ -61,7 +60,6 @@ fn create_api_provider(
         ))),
     }
 }
-
 /// An APIProvider trait allowing for multiple API providers to be implemented
 /// A gamble on the future (geddit) of Rust here.
 #[async_trait::async_trait]
@@ -145,7 +143,7 @@ impl OpenAIProvider {
                 Err(openai_err) => {
                     attempts += 1;
                     if let Some(err_code) = extract_http_status(&openai_err.message) {
-                        if err_code == 502 {
+                        if err_code == HttpErrorCode::BadGateway as u16 {
                             warn!(
                                 "Received 502 error, retrying... (Attempt {} of {})",
                                 attempts, max_retries
@@ -162,9 +160,67 @@ impl OpenAIProvider {
     }
 }
 
+/// Returns the provider and model from the settings file
+pub(crate) fn get_service_and_model(settings: &Settings) -> Option<String> {
+    let provider: &ProviderSettings = get_provider(settings);
+    let service: &ServiceSettings = get_service(provider);
+    Some(format!(
+        "provider: {}, service: {}, model: {}",
+        provider.name, service.name, service.model
+    ))
+}
+/// Gets the currently active provider. If there is a misconfiguration (i.e., a mangled `default.json`) then panics
+pub(crate) fn get_provider(settings: &Settings) -> &crate::settings::ProviderSettings {
+    let provider: &crate::settings::ProviderSettings = settings.get_active_provider()
+                                              .expect("Either a default or chosen provider should be configured in \'default.json\'. \
+                                              Either none was found, or the default provider did not match any name in the configured providers list.");
+    provider
+}
+/// Gets the currently active service. If there is a misconfiguration (i.e., a mangled `default.json`) then panics
+pub(crate) fn get_service(provider: &ProviderSettings) -> &ServiceSettings {
+    provider
+        .get_active_service()
+        .expect("Either a default or chosen service should be configured in \'default.json\'. \
+        Either none was found, or the default service did not match any name in the provider services list.")
+}
+/// HTTP error codes
+#[repr(u16)]
+enum HttpErrorCode {
+    BadRequest = 400,
+    Unauthorized = 401,
+    Forbidden = 403,
+    NotFound = 404,
+    InternalServerError = 500,
+    BadGateway = 502,
+    ServiceUnavailable = 503,
+    GatewayTimeout = 504,
+}
+/// Extracts the HTTP status code from an error message string
+/// Solves where the API wrapper embeds the actual HTTP status code in the error message
 fn extract_http_status(error_message: &str) -> Option<u16> {
+    if error_message.contains("400") {
+        return Some(HttpErrorCode::BadRequest as u16);
+    }
+    if error_message.contains("401") {
+        return Some(HttpErrorCode::Unauthorized as u16);
+    }
+    if error_message.contains("403") {
+        return Some(HttpErrorCode::Forbidden as u16);
+    }
+    if error_message.contains("404") {
+        return Some(HttpErrorCode::NotFound as u16);
+    }
+    if error_message.contains("500") {
+        return Some(HttpErrorCode::InternalServerError as u16);
+    }
     if error_message.contains("502") {
-        return Some(502);
+        return Some(HttpErrorCode::BadGateway as u16);
+    }
+    if error_message.contains("503") {
+        return Some(HttpErrorCode::ServiceUnavailable as u16);
+    }
+    if error_message.contains("504") {
+        return Some(HttpErrorCode::GatewayTimeout as u16);
     }
     None
 }

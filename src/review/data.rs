@@ -249,13 +249,13 @@ mod tests {
                 language: LanguageType {
                     name: "Rust".to_string(),
                     extension: ".rs".to_string(),
-                    statistics: Statistics {
+                    statistics: Some(Statistics {
                         size: 0,
                         loc: 0,
                         num_files: 0,
                         num_commits: 0,
                         frequency: 0.0,
-                    },
+                    }),
                 },
                 id_hash: "0".to_string(),
                 source_file: None,
