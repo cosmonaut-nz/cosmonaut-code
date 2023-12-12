@@ -2,10 +2,27 @@
 
 /// Functions to gather data on the 'git' repository
 pub(crate) mod repository {
+    use crate::retrieval::data::SourceFileError;
+    use git2::{Commit, Repository, Revwalk};
     use log::{debug, warn};
     use std::fs;
     use std::path::Path;
     use walkdir::DirEntry;
+
+    /// Gets the total number of commits for a git repository
+    pub(crate) fn get_total_commits(repo_path: &str) -> Result<i32, SourceFileError> {
+        let repo: Repository = Repository::open(repo_path)?;
+        let mut revwalk: Revwalk<'_> = repo.revwalk()?;
+        revwalk.push_head()?;
+
+        let mut total_commits: i32 = 0;
+
+        for commit_id in revwalk {
+            let _: Commit<'_> = repo.find_commit(commit_id?)?;
+            total_commits += 1;
+        }
+        Ok(total_commits)
+    }
     /// Checks whether the dir passed in is on the blacklist, e.g., '.git'
     pub(crate) fn is_not_blacklisted(entry: &DirEntry, blacklist: &[String]) -> bool {
         // Not in the blacklist
@@ -63,7 +80,7 @@ pub(crate) mod source_file {
     /// Returns:
     ///   - Ok([`SourceFileChangeFrequency`]) if successful
     ///   - Err([`SourceFileError`]) if unsuccessful
-    pub(crate) fn get_file_change_frequency(
+    pub(crate) fn get_source_file_change_frequency(
         repo_path: &str,
         file_path: &str,
     ) -> Result<SourceFileChangeFrequency, SourceFileError> {

@@ -13,11 +13,12 @@ use linguist::{
         is_vendor_from_str,
     },
 };
-use log::error;
+use log::{error, info};
 use regex::RegexSet;
+use sha2::{Digest, Sha256};
 use std::ffi::OsStr;
 
-use super::data::SourceFileInfo;
+use super::data::{LanguageType, SourceFileInfo};
 /// Contains the predefined languages, heuristics, vendors and documentation regexes from the GitHub Linguist project
 pub(crate) mod predefined {
     include!(concat!(env!("OUT_DIR"), "/languages.rs"));
@@ -49,7 +50,6 @@ pub(crate) fn initialize_language_analysis() -> (InMemoryLanguageContainer, Rege
 /// #Returns:
 /// - Some((Language, file_size u64, loc i64)) if successful
 // TODO: refactor to handle documentation, dotfiles, etc.
-// TODO: refactor all this as it stinks
 pub(crate) fn analyse_file_language(file_info: &mut SourceFileInfo) -> Option<&SourceFileInfo> {
     let (lc, rules, docs) = initialize_language_analysis();
 
@@ -66,20 +66,24 @@ pub(crate) fn analyse_file_language(file_info: &mut SourceFileInfo) -> Option<&S
         return None;
     }
 
-    // Use the Linguist crate to determine the language
+    // Use the Linguist crate to determine the language - if is not a source file (i.e., not code) then return None
     let language: &Language = match resolve_language_from_content_str(
         file_info.get_source_file_contents(),
         file_info.language.name.clone(),
         file_info.language.extension.clone(),
         &lc,
     ) {
-        Ok(Some(lang)) => lang,
+        Ok(Some(lang)) => {
+            if lang.scope != Scope::Programming && lang.scope != Scope::Markup {
+                return None;
+            }
+            lang
+        }
         _ => return None,
     };
-    if language.scope != Scope::Programming && language.scope != Scope::Markup {
-        return None;
-    }
 
+    // We have a valid language, so we can start analysing and populating the statistics
+    // There are two scope of statistics: SourceFileInfo and LanguageType; there are many SourceFileInfo per LanguageType
     let file_size: i64 = match get_file_contents_size(file_info.get_source_file_contents()) {
         Ok(size) => size as i64,
         Err(e) => {
@@ -94,6 +98,7 @@ pub(crate) fn analyse_file_language(file_info: &mut SourceFileInfo) -> Option<&S
             0
         }
     };
+    file_info.language = LanguageType::from_language(language); // At this point we don't know whether there are other language types so we set the stats later
     file_info.statistics.size = file_size;
     file_info.statistics.loc = loc;
     file_info.statistics.num_files += 1;
@@ -118,6 +123,10 @@ pub(crate) fn calculate_rag_status_for_reviewed_file(
         .as_ref()
         .map_or(0, |issues| issues.len());
     let loc = reviewed_file.source_file_info.statistics.loc;
+    info!(
+        "Errors: {}, Improvements: {}, Security Issues: {}, LOC: {}",
+        errors_count, improvements_count, security_issues_count, loc
+    );
 
     let error_ratio = errors_count as f64 / loc as f64;
     let security_issues_ratio = security_issues_count as f64 / loc as f64;
@@ -161,7 +170,14 @@ fn get_file_contents_size(file_contents: impl AsRef<OsStr>) -> Result<u64, &'sta
         .map_err(|_| "Length conversion error")?;
     Ok(length)
 }
+/// Calculates a (SHA256) hash from a string
+pub(crate) fn calculate_hash_from(content: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(content);
+    let result = hasher.finalize();
 
+    format!("{:x}", result)
+}
 /// Function to count lines of code in a file, skipping comments and empty lines
 // TODO: shift to using tokei crate to improve maintainability and accuracy
 fn count_lines_of_code(file_content: String) -> Result<i64, &'static str> {

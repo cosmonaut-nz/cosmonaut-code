@@ -59,11 +59,27 @@ pub mod comment_summary {
 #[cfg(debug_assertions)]
 pub mod _code_frequency {
     use crate::{
-        retrieval::{data::SourceFileChangeFrequency, git::source_file::get_file_change_frequency},
+        retrieval::{
+            data::SourceFileChangeFrequency,
+            git::{repository::get_total_commits, source_file::get_source_file_change_frequency},
+        },
         settings::Settings,
     };
 
-    pub(crate) fn test_code_frequency(
+    pub(crate) fn _test_total_commits(
+        settings: &Settings,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        log::info!("Mod: Testing total commits.");
+
+        let repo_path = settings.repository_path.clone();
+        let total_commits: i32 = get_total_commits(&repo_path)?;
+
+        log::info!("Total commits: {}", total_commits);
+
+        Ok(())
+    }
+
+    pub(crate) fn _test_code_frequency(
         settings: &Settings,
     ) -> Result<(), Box<dyn std::error::Error>> {
         log::info!("Mod: Testing code frequency.");
@@ -72,7 +88,8 @@ pub mod _code_frequency {
         // TODO: iterate over a set of files and determine the overall frequency ranking (top five) and also the average frequency (into the repository)
         let file_path = "src/review/mod.rs";
 
-        let fcf: SourceFileChangeFrequency = get_file_change_frequency(&repo_path, file_path)?;
+        let fcf: SourceFileChangeFrequency =
+            get_source_file_change_frequency(&repo_path, file_path)?;
 
         log::info!(
             "File commits: {}, total commits: {}, frequency: {}",
@@ -82,5 +99,30 @@ pub mod _code_frequency {
         );
 
         Ok(())
+    }
+}
+
+#[cfg(debug_assertions)]
+pub mod _test_utils {
+    use log::debug;
+
+    /// A (testing) utility to check the JSON sent back from the LLM
+    pub(crate) fn _pretty_print_json_for_debug(json_str: &str) {
+        match serde_json::from_str::<serde_json::Value>(json_str) {
+            Ok(json_value) => {
+                if let Ok(pretty_json) = serde_json::to_string_pretty(&json_value) {
+                    debug!("{}", pretty_json);
+                } else {
+                    debug!("Failed to pretty-print JSON. Likely mangled JSON.");
+                }
+            }
+            Err(e) => {
+                debug!("Cannot parse the JSON: {}", json_str);
+                debug!(
+                    "Failed to parse JSON for debug pretty printing. Likely mangled JSON: {}",
+                    e
+                );
+            }
+        }
     }
 }
