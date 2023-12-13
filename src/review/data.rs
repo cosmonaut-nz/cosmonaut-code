@@ -257,7 +257,7 @@ mod tests {
                         frequency: 0.0,
                     }),
                 },
-                id_hash: "0".to_string(),
+                id_hash: Some("0".to_string()),
                 source_file: None,
                 statistics: Statistics {
                     size: 0,
