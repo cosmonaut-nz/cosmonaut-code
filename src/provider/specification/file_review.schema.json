@@ -65,7 +65,7 @@
                 },
                 "id_hash": {
                     "type": "string",
-                    "description": "A hash of the contents of the source file as SHA256. Leave as zero."
+                    "description": "A hash of the contents of the source file as SHA256. Leave as null."
                 },
                 "statistics": {
                     "type": "Statistics",
@@ -76,6 +76,7 @@
             "required": [
                 "name",
                 "relative_path",
+                "id_hash",
                 "statistics"
             ]
         },

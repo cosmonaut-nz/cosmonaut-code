@@ -155,7 +155,7 @@ pub(crate) struct SourceFileInfo {
     pub(crate) name: String,
     pub(crate) relative_path: String,
     pub(crate) language: LanguageType,
-    pub(crate) id_hash: String,
+    pub(crate) id_hash: Option<String>,
     #[serde(skip)]
     pub(crate) source_file: Option<Box<SourceFile>>,
     #[serde(skip_deserializing)]
@@ -173,7 +173,7 @@ impl SourceFileInfo {
             name,
             relative_path,
             language,
-            id_hash,
+            id_hash: Some(id_hash),
             source_file: None,
             statistics,
         }
