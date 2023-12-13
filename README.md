@@ -46,9 +46,9 @@ use it as it is intended, as a start-point to a conversation on quality and curr
 
 ## usage
 
-Pre-release
+download pre-release
 
-[MacOS Apple Silicon](https://github.com/cosmonaut-nz/cosmonaut-code/releases/tag/v0.1.2)
+[MacOS Apple Silicon](https://github.com/cosmonaut-nz/cosmonaut-code/releases/download/v0.1.2/cosmonaut_code_0.1.2_macos-aarch64)
 
 ### configuration
 
@@ -94,10 +94,17 @@ run:
 export SENSITIVE_SETTINGS_PATH=[PATH_TO_YOUR_SETTINGS.JSON]
 
 ```
+download release above
 
 ```bash
 
-cargo run --release
+mv cosmonaut_code_0.1.2_macos-aarch64 cosmonaut_code
+
+```
+
+```bash
+
+./cosmonaut_code
 
 ```
 
