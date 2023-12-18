@@ -15,6 +15,18 @@
             "default_service": "gpt-4",
             "api_url": "https://api.openai.com/v1/chat/completions",
             "max_retries": 3
+        },
+        {
+            "name": "lm-studio",
+            "services": [
+                {
+                    "name": "codellama",
+                    "model": "codellama-rust-finetune"
+                }
+            ],
+            "default_service": "codellama",
+            "api_url": "http://localhost:1234/v1/chat/completions",
+            "max_retries": 1
         }
     ],
     "default_provider": "openai"
