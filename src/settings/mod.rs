@@ -187,6 +187,7 @@ impl fmt::Display for ProviderSettings {
 pub(crate) enum ProviderError {
     NotFound(String),
 }
+impl std::error::Error for ProviderError {}
 /// Custom error for misconfiguration of provider
 impl fmt::Display for ProviderError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
