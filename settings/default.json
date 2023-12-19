@@ -20,8 +20,8 @@
             "name": "lm-studio",
             "services": [
                 {
-                    "name": "codellama",
-                    "model": "codellama-rust-finetune"
+                    "name": "deepseek",
+                    "model": "deepseek-coder-6.7B-instruct"
                 }
             ],
             "default_service": "codellama",

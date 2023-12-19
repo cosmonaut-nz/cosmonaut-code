@@ -247,7 +247,7 @@ pub(crate) struct DeveloperMode {
     pub(crate) verbose_data_output: bool,
     #[serde(default = "default_false")]
     pub(crate) test_path: bool,
-    pub(crate) test_json_file: Option<String>,
+    pub(crate) test_file: Option<String>,
 }
 #[derive(Serialize, Deserialize, PartialEq)]
 pub(crate) struct SensitiveSettings {

@@ -16,12 +16,7 @@ pub mod comment_summary {
         info!("Mod: Testing summary creation.");
 
         let repo_review = _deserialize_repository_review_from(
-            settings
-                .developer_mode
-                .clone()
-                .unwrap()
-                .test_json_file
-                .unwrap(),
+            settings.developer_mode.clone().unwrap().test_file.unwrap(),
         )?;
 
         // Create a [`ReviewSummary`]
@@ -120,6 +115,59 @@ pub mod test_settings {
         info!("Provider settings: {:?}", get_service_and_model(settings));
 
         Ok(())
+    }
+}
+
+#[cfg(debug_assertions)]
+pub mod test_providers {
+    use std::fs::File;
+    use std::io::Read;
+
+    use log::info;
+
+    use crate::{
+        provider::{
+            api::{ProviderCompletionMessage, ProviderMessageRole},
+            review_or_summarise,
+        },
+        settings::Settings,
+    };
+
+    pub(crate) async fn _test_local_provider(
+        settings: &Settings,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        info!("Mod: Testing local LM Studio provider.");
+
+        let test_source_file = settings.developer_mode.clone().unwrap().test_file.unwrap();
+        let request_type = crate::provider::RequestType::Review;
+        let provider: &crate::settings::ProviderSettings = settings.get_active_provider()?;
+        let prompt_data = crate::provider::prompts::PromptData {
+            id: None,
+            messages: vec![ProviderCompletionMessage {
+                role: ProviderMessageRole::System,
+                content: "As an expert code reviewer with comprehensive knowledge in software development standards, review the following code.".to_string(),
+            },ProviderCompletionMessage {
+                role: ProviderMessageRole::System,
+                content: "Provide your analysis strictly in valid JSON format. Strictly escape any characters within your response strings that will create invalid JSON, such as \" - i.e., quotes - use a single escape character. Never use comments in your JSON..".to_string(),
+            },ProviderCompletionMessage {
+                role: ProviderMessageRole::User,
+                content: "Please review the following code. Keep you review short and to the point.".to_string(),
+            },ProviderCompletionMessage {
+                role: ProviderMessageRole::User,
+                content: get_code_str(test_source_file)?,
+            }],
+        };
+        let result = review_or_summarise(request_type, settings, provider, &prompt_data).await?;
+        info!("Result: {:?}", result);
+        Ok(())
+    }
+
+    fn get_code_str(file_path: String) -> Result<String, Box<dyn std::error::Error>> {
+        let mut file = File::open(file_path)?;
+        let mut file_contents = String::new();
+        file.read_to_string(&mut file_contents)?;
+
+        Ok(file_contents)
     }
 }
 
