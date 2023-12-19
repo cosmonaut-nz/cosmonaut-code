@@ -2,8 +2,8 @@
 //!  Handles the access to the LLM with utility functions for specified actions
 //!
 pub(crate) mod api;
-mod lmstudio;
-mod openai;
+pub(crate) mod lmstudio;
+pub(crate) mod openai;
 pub(crate) mod prompts;
 use crate::provider::prompts::PromptData;
 use crate::settings::{ProviderSettings, ServiceSettings, Settings};
