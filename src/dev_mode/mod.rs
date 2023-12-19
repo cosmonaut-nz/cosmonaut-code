@@ -120,10 +120,9 @@ pub mod test_settings {
 
 #[cfg(debug_assertions)]
 pub mod test_providers {
+    use log::info;
     use std::fs::File;
     use std::io::Read;
-
-    use log::info;
 
     use crate::{
         provider::{
