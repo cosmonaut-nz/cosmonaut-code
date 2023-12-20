@@ -17,14 +17,30 @@
             "max_retries": 3
         },
         {
-            "name": "lm-studio",
+            "name": "google",
             "services": [
                 {
-                    "name": "deepseek",
+                    "name": "gemini-pro",
+                    "model": "gemini-pro"
+                },
+                {
+                    "name": "gemini-ultra",
+                    "model": "gemini-ultra"
+                }
+            ],
+            "default_service": "gemini-pro",
+            "api_url": "https://generativelanguage.googleapis.com/v1",
+            "max_retries": 3
+        },
+        {
+            "name": "local",
+            "services": [
+                {
+                    "name": "lm-studio",
                     "model": "deepseek-coder-6.7B-instruct"
                 }
             ],
-            "default_service": "codellama",
+            "default_service": "lm-studio",
             "api_url": "http://localhost:1234/v1/chat/completions",
             "max_retries": 1
         }
