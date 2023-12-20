@@ -2,6 +2,7 @@
 //!  Handles the access to the LLM with utility functions for specified actions
 //!
 pub(crate) mod api;
+pub(crate) mod google;
 pub(crate) mod lmstudio;
 pub(crate) mod openai;
 pub(crate) mod prompts;
@@ -48,7 +49,10 @@ fn create_api_provider(
         "openai" => Ok(Box::new(openai::OpenAIProvider {
             model: provider_settings.get_active_service()?.model.to_string(),
         })),
-        "lm-studio" => Ok(Box::new(lmstudio::LMStudioProvider {})),
+        "google" => Ok(Box::new(google::GoogleProvider {
+            model: provider_settings.get_active_service()?.model.to_string(),
+        })),
+        "local" => Ok(Box::new(lmstudio::LMStudioProvider {})),
         _ => Err(Box::new(std::io::Error::new(
             std::io::ErrorKind::Other,
             format!("Unsupported provider: {}", provider_settings.name),

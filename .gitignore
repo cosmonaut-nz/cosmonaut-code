@@ -23,5 +23,7 @@ Thumbs.db
 
 # Environment configuration - SENSITIVE DATA!
 .env
-settings/development.*
+settings/**.json
+# Make sure that the default settings are not ignored
+!settings/default.json
 

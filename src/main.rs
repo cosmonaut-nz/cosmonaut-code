@@ -49,7 +49,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // dev_mode::code_frequency::_test_code_frequency(&settings)?;
             // dev_mode::_comment_summary::test_summary(&settings).await?;
             // dev_mode::test_settings::_test_provider_settings(&settings)?;
-            dev_mode::test_providers::_test_local_provider(&settings).await?;
+            // dev_mode::test_providers::_test_local_provider(&settings).await?;
+            dev_mode::test_providers::_test_google_provider(&settings).await?;
         }
     }
 
