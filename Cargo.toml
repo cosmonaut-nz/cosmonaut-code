@@ -1,6 +1,6 @@
 [package]
 name = "cosmonaut_code"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2021"
 license = "CC BY-NC-ND 4.0"
 readme = "README.md"
@@ -38,6 +38,7 @@ sha2 = "0.10.8"
 handlebars = "4.5.0"
 # linguist-rs = "1.1.2" # Using direct repository fetch in place of crates.io as version is out of date (local code changes)
 linguist-rs = { git = "https://github.com/cosmonaut-nz/linguist-rs.git", version = "1.1.2" }
+gcp_auth = "0.10.0"
 
 
 [dev-dependencies]

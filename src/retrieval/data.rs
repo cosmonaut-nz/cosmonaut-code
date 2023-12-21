@@ -154,7 +154,8 @@ impl LanguageType {
 pub(crate) struct SourceFileInfo {
     pub(crate) name: String,
     pub(crate) relative_path: String,
-    pub(crate) language: LanguageType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) language: Option<LanguageType>,
     pub(crate) id_hash: Option<String>,
     #[serde(skip)]
     pub(crate) source_file: Option<Box<SourceFile>>,
@@ -172,7 +173,7 @@ impl SourceFileInfo {
         Self {
             name,
             relative_path,
-            language,
+            language: Some(language),
             id_hash: Some(id_hash),
             source_file: None,
             statistics,

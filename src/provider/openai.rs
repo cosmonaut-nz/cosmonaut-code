@@ -99,7 +99,6 @@ impl OpenAIProvider {
                             continue;
                         }
                     }
-                    info!("OpenAI API request failed from request: {:?}", req);
                     return Err(format!("OpenAI API request failed: {}", openai_err).into());
                 }
             }

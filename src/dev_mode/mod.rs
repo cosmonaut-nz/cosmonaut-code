@@ -157,6 +157,7 @@ pub mod test_providers {
                 content: _get_code_str(test_source_file)?,
             }],
         };
+        info!("Prompt data: {:?}", prompt_data);
         let result = review_or_summarise(request_type, settings, provider, &prompt_data).await?;
         info!("Result: {:?}", result);
         Ok(())
@@ -187,6 +188,7 @@ pub mod test_providers {
                 content: _get_code_str(test_source_file)?,
             }],
         };
+        info!("Prompt data: {:#?}", prompt_data);
         let result = review_or_summarise(request_type, settings, provider, &prompt_data).await?;
         info!("Result: {:?}", result);
 

@@ -9,7 +9,7 @@
         },
         "file_rag_status": {
             "type": "string",
-            "description": "A RAG status for the file according to the findings",
+            "description": "A RAG status for the file according to the findings, strictly use enum values. Leave as null.",
             "enum": [
                 "Red",
                 "Amber",
@@ -57,11 +57,11 @@
                 },
                 "relative_path": {
                     "type": "string",
-                    "description": "The relative path of the file, including the file name and extension"
+                    "description": "The relative path of the file, including the file name and extension. If no path, give the file name."
                 },
                 "language": {
                     "type": "languageType",
-                    "description": "The details of the language the file is written in"
+                    "description": "The details of the language the file is written in. Leave as null."
                 },
                 "id_hash": {
                     "type": "string",
@@ -75,31 +75,7 @@
             },
             "required": [
                 "name",
-                "relative_path",
-                "id_hash",
-                "statistics"
-            ]
-        },
-        "error": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "string",
-                    "description": "Where in the code the error was found. Include line of code"
-                },
-                "issue": {
-                    "type": "string",
-                    "description": "An error which will directly impact the function or performance of the code. An error is where the code is clearly non-adherent to language standards, best practice or clearly deviates from DRY or SOLID principles."
-                },
-                "resolution": {
-                    "type": "string",
-                    "description": "A description of how the error can be resolved the error"
-                }
-            },
-            "required": [
-                "code",
-                "issue",
-                "resolution"
+                "relative_path"
             ]
         },
         "securityIssue": {
@@ -117,15 +93,15 @@
                 },
                 "code": {
                     "type": "string",
-                    "description": "Where in the code the issue was found. Include line of code"
+                    "description": "Where in the code the issue was found. Include line of code, or state 'general' if the error is not specific to a line of code. Required, do not give null"
                 },
                 "threat": {
                     "type": "string",
-                    "description": "A description of the threat or vulnerability, such as listed by OWASP, or CVE security vulnerability, etc. Detail the implications of the threat."
+                    "description": "A description of the threat or vulnerability, such as listed by OWASP, or CVE security vulnerability, etc. Detail the implications of the threat. Required, do not give null"
                 },
                 "mitigation": {
                     "type": "string",
-                    "description": "A description of how the threat can be mitigated"
+                    "description": "A description of how the threat can be mitigated. Required, do not give null"
                 }
             },
             "required": [
@@ -135,20 +111,42 @@
                 "mitigation"
             ]
         },
+        "error": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "description": "Where in the code the error was found. Include line of code, or state 'general' if the error is not specific to a line of code. Required, do not give null"
+                },
+                "issue": {
+                    "type": "string",
+                    "description": "An error which will directly impact the function or performance of the code. An error is where the code is clearly non-adherent to language standards, best practice or clearly deviates from DRY or SOLID principles. Required, do not give null"
+                },
+                "resolution": {
+                    "type": "string",
+                    "description": "A description of how the error can be resolved the error. Required, do not give null"
+                }
+            },
+            "required": [
+                "code",
+                "issue",
+                "resolution"
+            ]
+        },
         "improvement": {
             "type": "object",
             "properties": {
                 "code": {
                     "type": "string",
-                    "description": "Where in the code improvement can be made. Include the line of code as a snippet. Include the line number"
+                    "description": "Where in the code improvement can be made. Include the line of code as a snippet. Include the line number, or state 'general' if the error is not specific to a line of code. Required, do not give null"
                 },
                 "suggestion": {
                     "type": "string",
-                    "description": "A suggested improvement to the code, why and what can be done"
+                    "description": "A suggested improvement to the code, why and what can be done. Required, do not give null"
                 },
                 "improvement_details": {
                     "type": "string",
-                    "description": "Code that will make the improvement. Ensure the code is functionally complete and can be easily implemented in the source file you have reviewed. The code MUST align with the language of the source file"
+                    "description": "Code that will make the improvement. Ensure the code is functionally complete and can be easily implemented in the source file you have reviewed. The code MUST align with the language of the source file. Required, do not give null"
                 }
             },
             "required": [
@@ -174,10 +172,7 @@
                     "description": "Statistics for this LanguageType. Leave as null"
                 }
             },
-            "required": [
-                "name",
-                "extension"
-            ]
+            "required": []
         },
         "statistics": {
             "type": "object",
