@@ -22,7 +22,9 @@ pub(crate) struct Settings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) chosen_service: Option<String>,
     pub(crate) default_provider: String,
+    #[serde(default)]
     pub(crate) output_type: OutputType,
+    #[serde(default)]
     pub(crate) review_type: ReviewType,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) review_cycles: Option<i32>,

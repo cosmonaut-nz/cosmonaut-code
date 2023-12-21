@@ -58,7 +58,8 @@ pub(crate) fn analyse_file_language(file_info: &mut SourceFileInfo) -> Option<&S
     if is_vendor_from_str(file_info.relative_path.clone(), &rules)
         || is_documentation_from_str(file_info.relative_path.clone(), &docs)
         || is_dotfile_from_str(file_info.relative_path.clone())
-        || is_configuration_from_str(file_info.language.extension.clone())
+        || file_info.language.is_some()
+            && is_configuration_from_str(file_info.language.as_ref().unwrap().extension.clone())
     {
         // TODO: handle if is_documentation: if so then work out frequency; higher the count the better for overall RAG
         //          if no documentation then needs to be in repository summary and flagged as issue
@@ -69,8 +70,8 @@ pub(crate) fn analyse_file_language(file_info: &mut SourceFileInfo) -> Option<&S
     // Use the Linguist crate to determine the language - if is not a source file (i.e., not code) then return None
     let language: &Language = match resolve_language_from_content_str(
         file_info.get_source_file_contents(),
-        file_info.language.name.clone(),
-        file_info.language.extension.clone(),
+        file_info.language.as_ref().unwrap().name.clone(),
+        file_info.language.as_ref().unwrap().extension.clone(),
         &lc,
     ) {
         Ok(Some(lang)) => {
@@ -98,7 +99,7 @@ pub(crate) fn analyse_file_language(file_info: &mut SourceFileInfo) -> Option<&S
             0
         }
     };
-    file_info.language = LanguageType::from_language(language); // At this point we don't know whether there are other language types so we set the stats later
+    file_info.language = Some(LanguageType::from_language(language)); // At this point we don't know whether there are other language types so we set the stats later
     file_info.statistics.size = file_size;
     file_info.statistics.loc = loc;
     file_info.statistics.num_files += 1;

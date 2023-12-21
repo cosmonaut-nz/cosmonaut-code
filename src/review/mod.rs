@@ -90,7 +90,7 @@ pub(crate) async fn assess_codebase(
             // Add the LanguageType to the Vec<LanguageType>
             update_language_type_statistics(&mut lang_type_breakdown, &file_info);
 
-            let file_name_str = file_info.name.clone();
+            let file_name_str = file_info.relative_path.clone();
             let contents_str = file_info.get_source_file_contents();
             // Actually review the file via the LLM, returns a SourceFileReview
             match review_file(
@@ -141,7 +141,7 @@ fn update_language_type_statistics(
 ) {
     match lang_type_breakdown
         .iter()
-        .position(|lang| lang.name == file_info.language.name)
+        .position(|lang| lang.name == file_info.language.as_ref().unwrap().name)
     {
         Some(index) => {
             let language_stats = lang_type_breakdown
@@ -154,9 +154,16 @@ fn update_language_type_statistics(
             }
         }
         None => {
-            let mut new_lang_type = file_info.language.clone();
-            new_lang_type.statistics = Some(file_info.statistics.clone());
-            lang_type_breakdown.push(new_lang_type);
+            if let Some(mut new_lang_type) = file_info.language.clone() {
+                if let Some(statistics) = &mut new_lang_type.statistics {
+                    statistics.size += file_info.statistics.size;
+                    statistics.loc += file_info.statistics.loc;
+                    statistics.num_files += 1;
+                } else {
+                    new_lang_type.statistics = Some(file_info.statistics.clone());
+                    lang_type_breakdown.push(new_lang_type);
+                }
+            }
         }
     }
 }
@@ -217,7 +224,7 @@ fn update_review_summary(review_summary: &mut ReviewSummary, reviewed_file: &mut
     review_summary.text.push('\n');
 
     reviewed_file.file_rag_status =
-        calculate_rag_status_for_reviewed_file(reviewed_file).unwrap_or_default();
+        Some(calculate_rag_status_for_reviewed_file(reviewed_file).unwrap_or_default());
 }
 
 /// Finalise the [`RepositoryReview`] by adding the [`ReviewSummary`], Vec<LanguageType>, and other data
@@ -277,8 +284,10 @@ async fn review_file(
 
     if let Some(mut prompt_data) = get_prompt_data_based_on_review_type(settings)? {
         let provider: &ProviderSettings = get_provider(settings);
-        let review_request: String =
-            format!("File name: {}\n{}\n", code_file_path, code_file_contents);
+        let review_request: String = format!(
+            "Source file to review:\n file name: {}\n contents: \n{}\n",
+            code_file_path, code_file_contents
+        );
 
         prompt_data.add_user_message_prompt(review_request);
         perform_review(settings, provider, &prompt_data).await
@@ -323,7 +332,13 @@ async fn perform_review(
                 error!("Error in review: {}", e);
                 attempts += 1;
             }
-            Err(e) => return Err(e),
+            Err(e) => {
+                error!(
+                    "Failed after {} attempts. Cannot recover from error ",
+                    max_retries
+                );
+                return Err(e);
+            }
         }
     }
 }
@@ -341,9 +356,9 @@ fn process_llm_response(
         })
         .and_then(|stripped_json| {
             data::deserialize_file_review(&stripped_json).map_err(|e| {
-                error!(
-                    "Failed to deserialize: {:?}, Possibly due to invalid escape character",
-                    &stripped_json
+                warn!(
+                    "Failed to deserialize ProviderCompletionResponse from model: {};  JSON: {:?}",
+                    response.model, &stripped_json
                 );
                 Box::new(e) as Box<dyn std::error::Error>
             })

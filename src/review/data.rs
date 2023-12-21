@@ -112,7 +112,8 @@ pub(crate) enum RAGStatus {
 pub(crate) struct SourceFileReview {
     pub(crate) source_file_info: SourceFileInfo,
     pub(crate) summary: String,
-    pub(crate) file_rag_status: RAGStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) file_rag_status: Option<RAGStatus>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) security_issues: Option<Vec<SecurityIssue>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -134,7 +135,7 @@ impl SourceFileReview {
         &self.improvements
     }
     #[allow(dead_code)]
-    pub(crate) fn get_file_rag_status(&self) -> &RAGStatus {
+    pub(crate) fn get_file_rag_status(&self) -> &Option<RAGStatus> {
         &self.file_rag_status
     }
 }
@@ -246,7 +247,7 @@ mod tests {
             source_file_info: SourceFileInfo {
                 name: "build.rs".to_string(),
                 relative_path: "build.rs".to_string(),
-                language: LanguageType {
+                language: Some(LanguageType {
                     name: "Rust".to_string(),
                     extension: ".rs".to_string(),
                     statistics: Some(Statistics {
@@ -256,7 +257,7 @@ mod tests {
                         num_commits: 0,
                         frequency: 0.0,
                     }),
-                },
+                }),
                 id_hash: Some("0".to_string()),
                 source_file: None,
                 statistics: Statistics {
@@ -268,7 +269,7 @@ mod tests {
                 },
             },
             summary: "This is a review summary".to_string(),
-            file_rag_status: RAGStatus::Green,
+            file_rag_status: Some(RAGStatus::Green),
             security_issues: Some(vec![SecurityIssue {
                 severity: Severity::Low,
                 code: "SEC001".to_string(),
