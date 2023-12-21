@@ -33,6 +33,14 @@ generative ai will maximise outputs and 10x developer output. what about the qua
 5. entry-point for due diligence of technology assets.
 6. code owner reporting on technical-debt and general health of asset.
 
+## current state
+
+currently, most things are working and a solid report is produced in either `json` or `html`.
+
+the most stable and tested provider is openai. The best results, by far, are with the `gpt-4` service, which uses the latest `preview` model. the openai `gpt-3.5` works, but tends to over state issues and the quality of resolution offered to isses is not as good. it does run faster, however and is cheaper to run.
+
+google are late to the party, but have come in the door with a half-drunken bottle. the public instance of `gemini-pro` is both faster, cheaper and produces better results that openai's `gpt-3.5`. it is slightly behind the `gpt-4` `preview` model, but not far. do your own testing; we've found the late 2023 comparisons online to be highly misleading. the google provider is not as tested as openai, so you will see more errors in the log output. it should recover from these errors, but it is less robust.
+
 ## disclaimer
 
 this is really early days. running over a really big repo with the latest model will be super slow and possibly fail. we've tested it up to ~1500 code files, what with timeout retries etc., takes a couple of hours, cost about 5 usd. your mileage may vary. we think the value will come when it can be run over multiple models and compared and filtered.
@@ -46,6 +54,10 @@ there are issues with the language file type matching via the github linguist re
 we recommend that you run it multiple times at first to gain a base line; fix the big issues and then let it run periodically.
 
 right now it's deliberately a barebones offering. it works well, and we have gotten value from it, but there is a lot more to do. it's been fun to do.
+
+the google public api provider works, but is less robust than openai.
+
+there is a local instance wired up. it does work, but it highly fragile and unlikely to complete. it currently uses lm studio.
 
 ## usage
 
@@ -75,7 +87,7 @@ configure: add a `settings.json`, maybe in the `settings` folder, with the follo
 `chosen_provider` is in:
 
 1. `openai` (default)
-2. `google`
+2. `google` (note API key only, ADC does not work as this is the public version)
 
 `chosen_service` is in:
 
@@ -164,8 +176,9 @@ status today is: *"it works, and the happy path is pretty solid. deviate from th
 - [X] packaging so user can either install via `cargo install` or download the binary (macos apple silicon only)
 - [X] (fine) tune the prompts for clarity and accuracy
 - [X] more configuration and adjustment of prompts
-- [ ] github actions integration
 - [X] enable google gemini review of code
+- [ ] enable a private google gemini review of code using vertex ai (coming soon)
+- [ ] github actions integration (coming soon)
 - [X] enable private llm review of code (likely llama-based) run on a cloud service. (not fully tested, but wired in to use lm studio)
 - [ ] better collation of static data from `git` and the abstract source tree (ast) to feed the generative ai
 - [ ] proper documentation
