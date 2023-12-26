@@ -12,7 +12,7 @@ pub(super) mod data {
 
     // The structs that represent the Google API response
     /// Top-level response from Google Gemini
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Default, Clone, Deserialize)]
     pub struct GeminiResponse {
         pub model: Option<String>,
         pub candidates: Vec<Candidate>,
@@ -20,40 +20,40 @@ pub(super) mod data {
         pub prompt_feedback: Option<PromptFeedback>,
     }
     /// Google has the concept of a candidate. Similar to an OpenAI 'choice', but at the top-level
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Clone, Deserialize)]
     pub struct Candidate {
         pub content: Content,
         #[serde(rename = "finishReason")]
         pub finish_reason: Option<String>,
-        pub index: i32,
+        pub index: Option<i32>,
         #[serde(rename = "safetyRatings")]
         pub safety_ratings: Vec<SafetyRating>,
     }
     /// The Content for a Candidate is further broken down into Parts
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Clone, Deserialize)]
     pub struct Content {
-        pub parts: Vec<Part>,
+        pub parts: Option<Vec<Part>>,
         pub role: GeminiRole,
     }
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Clone, Deserialize)]
     pub struct Part {
         pub text: String,
     }
     /// Feedback on the prompt
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Clone, Deserialize)]
     pub struct PromptFeedback {
         #[serde(rename = "safetyRatings")]
         pub safety_ratings: Vec<SafetyRating>,
     }
 
     /// The Google safety rating
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Clone, Deserialize)]
     pub struct SafetyRating {
         pub category: String,
         pub probability: String,
     }
     /// A Google role is only ever 'user' or 'agent'
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Clone, Deserialize)]
     #[serde(rename_all = "lowercase")]
     pub enum GeminiRole {
         User,
@@ -68,10 +68,12 @@ pub(super) mod data {
         ) -> ProviderCompletionResponse {
             let mut messages: Vec<ProviderResponseMessage> = vec![];
             for candidate in &google_response.candidates {
-                for part in &candidate.content.parts {
-                    messages.push(ProviderResponseMessage {
-                        content: part.text.to_string(),
-                    });
+                if let Some(parts) = &candidate.content.parts {
+                    for part in parts {
+                        messages.push(ProviderResponseMessage {
+                            content: part.text.to_string(),
+                        });
+                    }
                 }
             }
             ProviderCompletionResponse {
@@ -103,18 +105,18 @@ pub(super) mod data {
                 model: Some("gemini-pro".to_string()),
                 candidates: vec![Candidate {
                     content: Content {
-                        parts: vec![
+                        parts: Some(vec![
                             Part {
                                 text: "Hello".to_string(),
                             },
                             Part {
                                 text: "World".to_string(),
                             },
-                        ],
+                        ]),
                         role: GeminiRole::User,
                     },
                     finish_reason: Some("complete".to_string()),
-                    index: 0,
+                    index: Some(0),
                     safety_ratings: vec![SafetyRating {
                         category: "safety".to_string(),
                         probability: "high".to_string(),

@@ -40,6 +40,9 @@ handlebars = "4.5.0"
 linguist-rs = { git = "https://github.com/cosmonaut-nz/linguist-rs.git", version = "1.1.2" }
 gcp_auth = "0.10.0"
 url = "2.5.0"
+# handler for async reponse streams
+reqwest-streams = { version = "0.5.1", features = ["json"] }
+futures = "0.3.30"
 
 
 [dev-dependencies]

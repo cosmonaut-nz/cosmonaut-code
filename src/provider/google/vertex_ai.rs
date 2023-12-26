@@ -7,12 +7,23 @@ use crate::provider::prompts::PromptData;
 use crate::provider::{APIProvider, RequestType};
 use crate::settings::{ProviderSettings, Settings};
 
+use futures::prelude::*;
+
 use gcp_auth::AuthenticationManager;
-use log::info;
 use reqwest::Client;
+use reqwest_streams::*;
 use serde_json::json;
 use std::time::Duration;
 use url::Url;
+
+use super::data::GeminiResponse;
+
+use serde_json::error::Error as SerdeError;
+use serde_json::Value;
+
+fn convert_to_gemini_response(json_value: &Value) -> Result<GeminiResponse, SerdeError> {
+    serde_json::from_value(json_value.clone())
+}
 
 /// The Google private API provider works on the the following URL structure:
 /// - The API URL base - 'https://{region}-aiplatform.googleapis.com/v1'
@@ -55,50 +66,53 @@ impl APIProvider for VertexAiProvider {
             .map(|message| json!([{"text": message.content}]))
             .collect();
 
-        let response: Result<reqwest::Response, reqwest::Error> = client
+        let response = client
             .post(&url)
             .header(reqwest::header::USER_AGENT, env!("CARGO_CRATE_NAME"))
-            .bearer_auth(&token.as_str().to_string()) // for private API only
-            .header("Content-Type", "application/json")
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .bearer_auth(&token.as_str().to_string())
             .json(&json!({
                 "contents": {"role": "user", "parts": prompt_msgs},
             }))
             .send()
             .await;
 
-        // TODO work out the format of the reponse
         match response {
             Ok(res) => match res.status() {
                 reqwest::StatusCode::OK => {
-                    // Going to shift the code to handle in chunks. These 'should' match to a 'GeminiResponse' struct.
-                    // As each is successfully deserialized, we'll add it to the GeminiStreamedResponse struct
-                    let streamed_response: GeminiStreamedResponse = GeminiStreamedResponse {
-                        model: Some(self.model.clone()),
-                        streamed_candidates: vec![],
-                        usage_metadata: None,
-                    };
-                    // TODO work out how to handle the streamed response
-                    // let mut stream = res.bytes_stream();
+                    let mut gemini_streamed_response: GeminiStreamedResponse =
+                        GeminiStreamedResponse {
+                            model: Some(self.model.clone()),
+                            streamed_candidates: vec![],
+                            usage_metadata: None,
+                        };
+
+                    // Okay, the Google API is pretty fragil right now and the responses are variable. They are JSON, but sometime it breaks the deserilization.
+                    let mut response_stream = res.json_array_stream::<serde_json::Value>(2048);
+
+                    while let Some(json_value) = response_stream.try_next().await? {
+                        let gemini_response = match convert_to_gemini_response(&json_value) {
+                            Ok(response) => response,
+                            Err(e) => {
+                                // Handle the error, but don't stop the stream.
+                                log::error!(
+                                    "Failed to convert json_value to GeminiResponse: {}. json_value: {:#?}, for prompt: {:#?}",
+                                    e,
+                                    json_value,
+                                    prompt_data
+                                );
+                                return Err(e.into());
+                            }
+                        };
+                        // TODO check the 'finish_reason' and 'safety_ratings' to see if we need to stop the stream
+                        //      Google is aggressive on content safety; however, it is not consistent in enforcement. The prompt may get pinged.
+                        gemini_streamed_response
+                            .streamed_candidates
+                            .push(gemini_response);
+                    }
 
                     Ok(GeminiStreamedResponseConverter
-                        .to_generic_provider_response(&streamed_response))
-                }
-                reqwest::StatusCode::UNAUTHORIZED => {
-                    return Err(format!("Authorization error. Code: {:?}", res.status()).into());
-                }
-                reqwest::StatusCode::BAD_REQUEST => {
-                    return Err(format!(
-                        "API request format not correctly formed. Code: {:?}",
-                        res.status()
-                    )
-                    .into());
-                }
-                reqwest::StatusCode::FORBIDDEN => {
-                    let status = res.status();
-                    info!("Forbidden. Check API permissions. {:#?}", res.text().await);
-                    return Err(
-                        format!("Forbidden. Check API permissions. Code: {:?}", status).into(),
-                    );
+                        .to_generic_provider_response(&gemini_streamed_response))
                 }
                 _ => {
                     return Err(format!("An unexpected HTTP error code: {:?}", res.status()).into());
@@ -160,7 +174,7 @@ pub(super) mod data {
     };
 
     /// The streamGenerateContent response
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Default, Deserialize)]
     pub struct GeminiStreamedResponse {
         pub model: Option<String>,
         #[serde(rename = "candidates")]
@@ -191,10 +205,12 @@ pub(super) mod data {
             let mut messages: Vec<ProviderResponseMessage> = vec![];
             for gemini_completion_response in gemini_candidates {
                 for candidate in &gemini_completion_response.candidates {
-                    for part in &candidate.content.parts {
-                        messages.push(ProviderResponseMessage {
-                            content: part.text.to_string(),
-                        });
+                    if let Some(parts) = &candidate.content.parts {
+                        for part in parts {
+                            messages.push(ProviderResponseMessage {
+                                content: part.text.to_string(),
+                            });
+                        }
                     }
                 }
             }
@@ -218,3 +234,6 @@ pub(super) mod data {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {}
