@@ -29,7 +29,23 @@
                 }
             ],
             "default_service": "gemini-pro",
-            "api_url": "https://generativelanguage.googleapis.com/v1",
+            "api_url": "https://generativelanguage.googleapis.com/v1/models/{model}:generateContent",
+            "max_retries": 3
+        },
+        {
+            "name": "vertex-ai",
+            "services": [
+                {
+                    "name": "gemini-pro",
+                    "model": "gemini-pro"
+                },
+                {
+                    "name": "gemini-ultra",
+                    "model": "gemini-ultra"
+                }
+            ],
+            "default_service": "gemini-pro",
+            "api_url": "https://{region}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{region}/publishers/google/models/{model}:streamGenerateContent",
             "max_retries": 3
         },
         {

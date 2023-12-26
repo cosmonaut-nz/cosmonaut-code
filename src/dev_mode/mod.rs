@@ -163,7 +163,7 @@ pub mod test_providers {
         Ok(())
     }
 
-    /// Tests Google provider using gemini-pro
+    /// Tests private Google provider using gemini-pro
     pub(crate) async fn _test_google_provider(
         settings: &Settings,
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -176,7 +176,7 @@ pub mod test_providers {
             id: None,
             messages: vec![ProviderCompletionMessage {
                 role: ProviderMessageRole::System,
-                content: "As an expert code reviewer with comprehensive knowledge in software development standards, review the following code.".to_string(),
+                content: "You are a code reviewer with comprehensive knowledge in software development standards, review the following code.".to_string(),
             },ProviderCompletionMessage {
                 role: ProviderMessageRole::System,
                 content: "Provide your analysis strictly in valid JSON format. Strictly escape any characters within your response strings that will create invalid JSON, such as \" - i.e., quotes - use a single escape character. Never use comments in your JSON..".to_string(),
@@ -188,9 +188,9 @@ pub mod test_providers {
                 content: _get_code_str(test_source_file)?,
             }],
         };
-        info!("Prompt data: {:#?}", prompt_data);
+        // info!("Prompt data: {:#?}", prompt_data);
         let result = review_or_summarise(request_type, settings, provider, &prompt_data).await?;
-        info!("Result: {:?}", result);
+        info!("Result: {:#?}", result);
 
         Ok(())
     }

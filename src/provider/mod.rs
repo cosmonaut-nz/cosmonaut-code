@@ -49,7 +49,10 @@ fn create_api_provider(
         "openai" => Ok(Box::new(openai::OpenAIProvider {
             model: provider_settings.get_active_service()?.model.to_string(),
         })),
-        "google" => Ok(Box::new(google::GoogleProvider {
+        "google" => Ok(Box::new(google::gemini::GeminiProvider {
+            model: provider_settings.get_active_service()?.model.to_string(),
+        })),
+        "vertex-ai" => Ok(Box::new(google::vertex_ai::VertexAiProvider {
             model: provider_settings.get_active_service()?.model.to_string(),
         })),
         "local" => Ok(Box::new(lmstudio::LMStudioProvider {})),

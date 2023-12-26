@@ -39,6 +39,10 @@ handlebars = "4.5.0"
 # linguist-rs = "1.1.2" # Using direct repository fetch in place of crates.io as version is out of date (local code changes)
 linguist-rs = { git = "https://github.com/cosmonaut-nz/linguist-rs.git", version = "1.1.2" }
 gcp_auth = "0.10.0"
+url = "2.5.0"
+# handler for async reponse streams
+reqwest-streams = { version = "0.5.1", features = ["json"] }
+futures = "0.3.30"
 
 
 [dev-dependencies]
