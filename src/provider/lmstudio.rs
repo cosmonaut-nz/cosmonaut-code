@@ -80,6 +80,9 @@ pub struct Message {
 pub(crate) struct LMStudioResponseConverter;
 
 impl ProviderResponseConverter<LMStudioCompletionResponse> for LMStudioResponseConverter {
+    fn new(_model: String) -> Self {
+        LMStudioResponseConverter {}
+    }
     fn to_generic_provider_response(
         &self,
         response: &LMStudioCompletionResponse,

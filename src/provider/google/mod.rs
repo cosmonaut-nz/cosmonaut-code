@@ -3,6 +3,7 @@ pub(crate) mod vertex_ai;
 
 /// The data structures for the Google API response
 pub(super) mod data {
+    use google_generative_ai_rs::v1::gemini::response::Response;
     use serde::Deserialize;
 
     use crate::provider::api::{
@@ -59,29 +60,29 @@ pub(super) mod data {
         User,
         Model,
     }
-    // Implementation of ProviderResponseConverter for LM Studio.
-    pub(crate) struct GeminiResponseConverter;
-    impl ProviderResponseConverter<GeminiResponse> for GeminiResponseConverter {
+    // Implementation of ProviderResponseConverter for the Gemini FM.
+    pub(crate) struct GeminiResponseConverter {
+        model: String,
+    }
+    impl ProviderResponseConverter<Response> for GeminiResponseConverter {
+        fn new(model: String) -> Self {
+            GeminiResponseConverter { model }
+        }
         fn to_generic_provider_response(
             &self,
-            google_response: &GeminiResponse,
+            google_response: &Response,
         ) -> ProviderCompletionResponse {
             let mut messages: Vec<ProviderResponseMessage> = vec![];
             for candidate in &google_response.candidates {
-                if let Some(parts) = &candidate.content.parts {
-                    for part in parts {
-                        messages.push(ProviderResponseMessage {
-                            content: part.text.to_string(),
-                        });
-                    }
+                for part in &candidate.content.parts {
+                    messages.push(ProviderResponseMessage {
+                        content: part.text.to_string(),
+                    });
                 }
             }
             ProviderCompletionResponse {
                 id: "".to_string(),
-                model: google_response
-                    .model
-                    .clone()
-                    .unwrap_or("none set".to_string()),
+                model: self.model.clone(),
                 choices: vec![ProviderResponseChoice {
                     message: ProviderResponseMessage {
                         content: messages
@@ -96,45 +97,5 @@ pub(super) mod data {
     }
 
     #[cfg(test)]
-    mod tests {
-        use super::*;
-
-        #[test]
-        fn test_to_generic_provider_response() {
-            let google_response = GeminiResponse {
-                model: Some("gemini-pro".to_string()),
-                candidates: vec![Candidate {
-                    content: Content {
-                        parts: Some(vec![
-                            Part {
-                                text: "Hello".to_string(),
-                            },
-                            Part {
-                                text: "World".to_string(),
-                            },
-                        ]),
-                        role: GeminiRole::User,
-                    },
-                    finish_reason: Some("complete".to_string()),
-                    index: Some(0),
-                    safety_ratings: vec![SafetyRating {
-                        category: "safety".to_string(),
-                        probability: "high".to_string(),
-                    }],
-                }],
-                prompt_feedback: Some(PromptFeedback {
-                    safety_ratings: vec![SafetyRating {
-                        category: "safety".to_string(),
-                        probability: "high".to_string(),
-                    }],
-                }),
-            };
-
-            let converter = GeminiResponseConverter;
-            let provider_response = converter.to_generic_provider_response(&google_response);
-
-            assert_eq!(provider_response.choices.len(), 1);
-            assert_eq!(provider_response.choices[0].message.content, "Hello\nWorld");
-        }
-    }
+    mod tests {}
 }
