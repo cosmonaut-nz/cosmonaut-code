@@ -1,6 +1,6 @@
 [package]
 name = "cosmonaut_code"
-version = "0.2.1"
+version = "0.2.0"
 edition = "2021"
 license = "CC BY-NC-ND 4.0"
 readme = "README.md"
@@ -19,7 +19,9 @@ path = "src/main.rs"
 
 [dependencies]
 openai-api-rs = "2.1.4"
-google-generative-ai-rs = { git = "https://github.com/avastmick/google-generative-ai-rs.git", version = "0.1.2" }
+# openai-api-rs = { git = "https://github.com/cosmonaut-nz/openai-api-rs.git"}
+google-generative-ai-rs = "0.1.2" 
+# google-generative-ai-rs = { git = "https://github.com/avastmick/google-generative-ai-rs.git", version = "0.1.2" }
 thiserror = "1.0.50"
 log = "0.4.20"
 env_logger = "0.10.1"
