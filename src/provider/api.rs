@@ -53,6 +53,7 @@ pub(crate) trait ProviderMessageConverter {
 
 // Trait for converting provider-specific responses to generic format.
 pub(crate) trait ProviderResponseConverter<T> {
+    fn new(model: String) -> Self;
     fn to_generic_provider_response(&self, response: &T) -> ProviderCompletionResponse;
 }
 

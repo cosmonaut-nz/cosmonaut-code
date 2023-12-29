@@ -81,7 +81,7 @@ impl LanguageType {
     pub(crate) fn from_language(language: &Language) -> Self {
         let ext = language
             .extensions
-            .get(0)
+            .first()
             .map(|os_str| os_str.to_str().unwrap_or_default())
             .unwrap_or_default();
         Self {

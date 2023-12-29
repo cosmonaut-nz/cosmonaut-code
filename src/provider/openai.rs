@@ -144,6 +144,9 @@ impl ProviderMessageConverter for OpenAIMessageConverter {
 pub(crate) struct OpenAIResponseConverter;
 
 impl ProviderResponseConverter<ChatCompletionResponse> for OpenAIResponseConverter {
+    fn new(_model: String) -> Self {
+        OpenAIResponseConverter
+    }
     fn to_generic_provider_response(
         &self,
         response: &ChatCompletionResponse,

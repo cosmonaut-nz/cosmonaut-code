@@ -8,7 +8,6 @@ use crate::provider::{APIProvider, RequestType};
 use crate::settings::{ProviderSettings, Settings};
 
 use futures::prelude::*;
-
 use gcp_auth::AuthenticationManager;
 use reqwest::Client;
 use reqwest_streams::*;
@@ -114,9 +113,7 @@ impl APIProvider for VertexAiProvider {
                     Ok(GeminiStreamedResponseConverter
                         .to_generic_provider_response(&gemini_streamed_response))
                 }
-                _ => {
-                    return Err(format!("An unexpected HTTP error code: {:?}", res.status()).into());
-                }
+                _ => Err(format!("An unexpected HTTP error code: {:?}", res.status()).into()),
             },
             Err(e) => {
                 if e.is_timeout() {
@@ -142,12 +139,10 @@ impl VertexAiProvider {
         _settings: &Settings,
         provider: &ProviderSettings,
     ) -> Result<String, Box<dyn std::error::Error>> {
-        //
+        // TODO set up the region and project_id from the settings
         let region = "us-central1";
         let project_id = "mickclarke138";
 
-        // Replace '{region}' && '{project_id}' && '{model}' placeholders in the URL string
-        // TODO work out how to get the region and project_id from the settings
         let url_updated = provider
             .api_url
             .replace("{model}", &self.model)
@@ -195,6 +190,9 @@ pub(super) mod data {
 
     pub(crate) struct GeminiStreamedResponseConverter;
     impl ProviderResponseConverter<GeminiStreamedResponse> for GeminiStreamedResponseConverter {
+        fn new(_model: String) -> Self {
+            GeminiStreamedResponseConverter
+        }
         fn to_generic_provider_response(
             &self,
             google_response: &GeminiStreamedResponse,
