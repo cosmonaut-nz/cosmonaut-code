@@ -227,6 +227,7 @@ mod tests {
                     function_call: None,
                 },
             }],
+            system_fingerprint: None,
         };
 
         let converted_response = converter.to_generic_provider_response(&response);
