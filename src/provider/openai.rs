@@ -37,7 +37,12 @@ impl APIProvider for OpenAIProvider {
         settings: &Settings,
         prompt_data: &PromptData,
     ) -> Result<ProviderCompletionResponse, Box<dyn std::error::Error>> {
-        let key = settings.sensitive.api_key.use_key(|key| key.to_string());
+        let key = settings
+            .sensitive
+            .api_key
+            .as_ref()
+            .ok_or("No API Key set, please set to user provider service")?
+            .use_key(|key| key.to_string());
 
         let client: Client = Client::new(key);
         let completion_msgs = OpenAIMessageConverter.convert_messages(&prompt_data.messages);
