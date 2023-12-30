@@ -6,8 +6,8 @@ pub(crate) mod gemini {
 
     use google_generative_ai_rs::v1::api::Client;
     use google_generative_ai_rs::v1::api::PostResult;
-    use google_generative_ai_rs::v1::gemini::request::{Content, Part, Request};
-    use google_generative_ai_rs::v1::gemini::Role;
+    use google_generative_ai_rs::v1::gemini::request::Request;
+    use google_generative_ai_rs::v1::gemini::{Content, Part, Role};
     use serde_json::json;
 
     use super::data::GeminiResponseConverter;
@@ -164,7 +164,7 @@ pub(super) mod data {
                     for candidate in &response.candidates {
                         for part in &candidate.content.parts {
                             messages.push(ProviderResponseMessage {
-                                content: part.text.to_string(),
+                                content: part.text.as_ref().unwrap().to_string(),
                             });
                         }
                     }
@@ -174,7 +174,7 @@ pub(super) mod data {
                         for candidate in &gemini_completion_response.candidates {
                             for part in &candidate.content.parts {
                                 messages.push(ProviderResponseMessage {
-                                    content: part.text.to_string(),
+                                    content: part.text.as_ref().unwrap().to_string(),
                                 });
                             }
                         }
