@@ -343,7 +343,6 @@ async fn perform_review(
     }
 }
 /// processes the response returned by the LLM, stripping any artefacts, or illegal chars, then loading the JSON into a [`SourceFileReview`]
-/// TODO This is not very robust and needs moving out into the provider module
 fn process_llm_response(
     response: &ProviderCompletionResponse,
 ) -> Result<SourceFileReview, Box<dyn std::error::Error>> {
@@ -356,7 +355,7 @@ fn process_llm_response(
         })
         .and_then(|stripped_json| {
             data::deserialize_file_review(&stripped_json).map_err(|e| {
-                warn!(
+                info!(
                     "Failed to deserialize ProviderCompletionResponse from model: {};  JSON: {:?}",
                     response.model, &stripped_json
                 );
@@ -475,7 +474,7 @@ fn get_overall_rag_for(review: &RepositoryReview) -> RAGStatus {
         let errors_ratio = breakdown.errors as f64 / num_total_files as f64;
         let improvements_ratio = breakdown.improvements as f64 / num_total_files as f64;
 
-        if security_issues_ratio > 0.05 || errors_ratio > 0.08 || improvements_ratio > 0.60 {
+        if security_issues_ratio > 0.05 || errors_ratio > 0.08 || improvements_ratio > 0.80 {
             return RAGStatus::Amber;
         }
     }

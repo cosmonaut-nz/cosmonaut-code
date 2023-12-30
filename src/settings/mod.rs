@@ -88,24 +88,16 @@ impl fmt::Display for Settings {
 /// `review_type` and `output_type` have default values, but other fields must be explicitly set.
 impl Settings {
     pub(crate) fn new() -> Result<Self, ConfigError> {
-        let config_builder: config::ConfigBuilder<config::builder::DefaultState> =
-            Config::builder().add_source(File::from_str(DEFAULT_CONFIG, FileFormat::Json));
+        let path_to_sensitive
+        = env::var(ENV_SENSITIVE_SETTINGS_PATH)
+        .map_err(|_|
+            ConfigError::Message
+                ("Set the environment variable 'SENSITIVE_SETTINGS_PATH' to point to a valid settings file.".to_string()))?;
 
-        let local_settings_path: Option<String> = env::var(ENV_SENSITIVE_SETTINGS_PATH).ok();
-        let config_builder: config::ConfigBuilder<config::builder::DefaultState> = if let Some(
-            path,
-        ) =
-            local_settings_path
-        {
-            config_builder.add_source(
-                File::with_name(&path)
-                    .required(false)
-                    .format(FileFormat::Json),
-            )
-        } else {
-            return Err(ConfigError::Message("No settings.json file found. Please set the environment variable 'SENSITIVE_SETTINGS_PATH' to point to a valid settings file.".to_string()));
-        };
-        let config = config_builder.build()?;
+        let config = Config::builder()
+            .add_source(File::from_str(DEFAULT_CONFIG, FileFormat::Json))
+            .add_source(File::with_name(&path_to_sensitive).format(FileFormat::Json))
+            .build()?;
 
         config.try_deserialize::<Settings>()
     }
@@ -253,11 +245,15 @@ pub(crate) struct DeveloperMode {
 }
 #[derive(Serialize, Deserialize, PartialEq)]
 pub(crate) struct SensitiveSettings {
-    pub(crate) api_key: APIKey,
+    pub(crate) api_key: Option<APIKey>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) org_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) org_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) region: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) project_id: Option<String>,
 }
 /// Custom Display implementation for SensitiveSettings to prevent accidental printing of secret
 impl fmt::Display for SensitiveSettings {
@@ -372,7 +368,7 @@ mod tests {
         assert_eq!(settings.review_type, ReviewType::General);
         assert_eq!(settings.repository_path, "test/repo/path");
         assert_eq!(settings.report_output_path, "test/report/path");
-        assert_eq!(settings.sensitive.api_key.0, "testkey");
+        assert_eq!(settings.sensitive.api_key.unwrap().0, "testkey");
 
         dir.close().unwrap();
 
@@ -437,9 +433,11 @@ mod tests {
             repository_path: "path/to/repo".to_string(),
             report_output_path: "path/to/report".to_string(),
             sensitive: SensitiveSettings {
-                api_key: APIKey("secret".to_string()),
+                api_key: Some(APIKey("secret".to_string())),
                 org_id: None,
                 org_name: None,
+                region: None,
+                project_id: None,
             },
             developer_mode: None,
         };

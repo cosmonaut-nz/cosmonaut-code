@@ -18,16 +18,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
     // Load settings
-    let settings: settings::Settings = match settings::Settings::new() {
-        Ok(cfg) => cfg,
-        Err(e) => {
-            error!("Fatal error. Failed to load settings: {}", e);
-            // Cannot recover due to incomplete configuration
-            std::process::exit(1);
-        }
-    };
-    // TODO should have the settings fully loaded and trusted at this point.
-    //      refactor to make usage of settings easier && more aligned with usage.
+    let settings: settings::Settings = settings::Settings::new()?;
+    // Should have the settings fully loaded and trusted at this point.
 
     #[cfg(debug_assertions)]
     {

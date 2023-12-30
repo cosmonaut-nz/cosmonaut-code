@@ -169,6 +169,8 @@ pub mod test_providers {
     ) -> Result<(), Box<dyn std::error::Error>> {
         info!("Mod: Testing Google provider.");
 
+        info!("Settings: {:?}", settings);
+
         let test_source_file = settings.developer_mode.clone().unwrap().test_file.unwrap();
         let request_type = crate::provider::RequestType::Review;
         let provider: &crate::settings::ProviderSettings = settings.get_active_provider()?;
