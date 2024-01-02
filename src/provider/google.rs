@@ -159,6 +159,9 @@ pub(super) mod data {
             google_response: &PostResult,
         ) -> ProviderCompletionResponse {
             let mut messages: Vec<ProviderResponseMessage> = vec![];
+            // TODO: If this is a streamed response, it has much finer-tuned harm handling
+            // than the REST response (right now). It may be rejecting the prompt input as harmful
+            // and stopping the feed. I need to handle this and flag it to the user.
             match google_response {
                 PostResult::Rest(response) => {
                     for candidate in &response.candidates {

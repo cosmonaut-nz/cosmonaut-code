@@ -162,7 +162,7 @@ impl fmt::Display for OutputType {
 
 /// Handlebars [`Helper`] to round a `f64` to two decimal places
 fn format_percentage(
-    h: &Helper<'_, '_>,
+    h: &Helper<'_>,
     _: &Handlebars<'_>,
     _: &Context,
     _: &mut RenderContext<'_, '_>,
@@ -174,7 +174,7 @@ fn format_percentage(
 }
 /// Handlebars [`Helper`] to render a '\n' character to "<br" HTML
 fn newline_to_br(
-    h: &Helper<'_, '_>,
+    h: &Helper<'_>,
     _: &Handlebars,
     _: &Context,
     _: &mut RenderContext<'_, '_>,
