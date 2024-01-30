@@ -1,6 +1,6 @@
 [package]
 name = "cosmonaut_code"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 license = "CC BY-NC-ND 4.0"
 readme = "README.md"
@@ -18,8 +18,8 @@ name = "cosmonaut_code"
 path = "src/main.rs"
 
 [dependencies]
-openai-api-rs = "2.1.7"
-google-generative-ai-rs = "0.1.4" 
+openai-api-rs = "4.0.5"
+google-generative-ai-rs = "0.1.6"
 # google-generative-ai-rs = { git = "https://github.com/avastmick/google-generative-ai-rs.git", version = "0.1.3" }
 thiserror = "1.0.55"
 log = "0.4.20"
@@ -50,4 +50,4 @@ futures = "0.3.30"
 tempfile = "3.9.0"
 
 [build-dependencies]
-linguist-rs-build = { git = "https://github.com/cosmonaut-nz/linguist-rs.git", version = "1.1.1" } 
+linguist-rs-build = { git = "https://github.com/cosmonaut-nz/linguist-rs.git", version = "1.1.1" }

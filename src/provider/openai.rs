@@ -17,7 +17,7 @@ use openai_api_rs::v1::{
     api::Client,
     chat_completion::{
         ChatCompletionChoice, ChatCompletionMessage, ChatCompletionMessageForResponse,
-        ChatCompletionRequest, ChatCompletionResponse, MessageRole,
+        ChatCompletionRequest, ChatCompletionResponse, Content, MessageRole,
     },
 };
 use serde_json::json;
@@ -128,9 +128,8 @@ impl ProviderMessageConverter for OpenAIMessageConverter {
 
         ChatCompletionMessage {
             role,
-            content: message.content.clone(),
+            content: Content::Text(message.content.clone()),
             name: None,
-            function_call: None,
         }
     }
 
@@ -205,7 +204,11 @@ mod tests {
         };
 
         let converted_message = converter.convert_message(&message);
-        assert_eq!(converted_message.content, message.content);
+        let converted_msg_content = match converted_message.content {
+            Content::Text(content) => content,
+            _ => panic!("Expected Content::Text"),
+        };
+        assert_eq!(converted_msg_content, message.content);
     }
     #[test]
     fn test_openai_response_converter() {
@@ -229,7 +232,7 @@ mod tests {
                     name: None,
                     content: Some("Test content".to_string()),
                     role: MessageRole::user,
-                    function_call: None,
+                    tool_calls: None,
                 },
             }],
             system_fingerprint: None,
