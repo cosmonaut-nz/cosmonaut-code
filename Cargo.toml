@@ -42,7 +42,7 @@ linguist-rs = { git = "https://github.com/cosmonaut-nz/linguist-rs.git", version
 gcp_auth = "0.10.0"
 url = "2.5.0"
 # handler for async reponse streams
-reqwest-streams = { version = "0.5.1", features = ["json"] }
+reqwest-streams = { version = "0.6.0", features = ["json"] }
 futures = "0.3.30"
 
 
