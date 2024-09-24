@@ -2,6 +2,9 @@
 
 [![Rust Check](https://github.com/cosmonaut-nz/cosmonaut-code/actions/workflows/rust-check.yml/badge.svg)](https://github.com/cosmonaut-nz/cosmonaut-code/actions/workflows/rust-check.yml)
 
+> **Note**
+This was an experiment that very nearly escaped from the lab in the early excitement of generative AI. The world moved on. Have a look at the applied work at Kayshun to see further work. This is now archived.
+
 ## purpose
 
 it's a code explorer, explainer and assessment tool.
